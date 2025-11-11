@@ -1,26 +1,27 @@
-// NovaProxy v1.0 — Hybrid AI Proxy (Gemini → OpenAI)
-// مصمم ليعمل مع NovaBot v4.6 أو أي بوت مشابه.
+// ============================================================================
+// NovaProxy v1.5 Simplified — Hybrid AI Proxy + Email Collector
+// يعمل مع NovaBot v4.7 / v4.8
 // المطوّر: محمد أبو سنينة – NOVALINK.AI
+// ============================================================================
 
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const fs = require("fs");
 
 // ======================= ⚙️ CONFIG – إعدادات السيرفر =======================
-// يمكنك تعديل هذا القسم فقط لكل عميل جديد دون لمس بقية الكود.
 
 const CONFIG = {
-  BRAND_NAME: "نوفا لينك", // اسم العلامة التجارية التي سيذكرها البوت في البرومبت
-  USE_GEMINI_FIRST_BY_DEFAULT: true, // true: Gemini أولاً، false: OpenAI أولاً
+  BRAND_NAME: "نوفا لينك",
+  USE_GEMINI_FIRST_BY_DEFAULT: true,
   ALLOWED_ORIGINS: [
     "https://novalink-ai.com",
     "https://www.novalink-ai.com"
-    // يمكنك إضافة دومينات عملائك هنا لاحقاً
   ],
-  LOG_REQUESTS: true // true لطباعة بعض المعلومات في الـ Console للمراجعة
+  LOG_REQUESTS: true
 };
 
-// مفاتيح API (لا تضعها في الكود، فقط في ملفات البيئة أو إعدادات Render)
+// مفاتيح واجهات الذكاء الاصطناعي (يتم وضعها في Render Environment)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 
@@ -29,11 +30,11 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const app = express();
 app.use(express.json());
 
-// CORS – السماح فقط للدومينات المحددة في CONFIG
+// CORS – السماح فقط لدومينات نوفا لينك
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // يسمح لأدوات مثل Postman
+      if (!origin) return callback(null, true);
       if (CONFIG.ALLOWED_ORIGINS.includes(origin)) {
         return callback(null, true);
       }
@@ -46,15 +47,13 @@ app.use(
 
 function buildPrompt(question, context) {
   let base =
-    `أنت مساعد عربي محترف يمثل منصة ${CONFIG.BRAND_NAME} المتخصصة في الذكاء الاصطناعي وتطوير الأعمال.\n` +
+    `أنت مساعد عربي يمثل منصة ${CONFIG.BRAND_NAME} المتخصصة في الذكاء الاصطناعي وتطوير الأعمال.\n` +
     `أجب بجمل قصيرة وواضحة وبأسلوب عملي يشبه استشارة صديق خبير.\n` +
-    `لا تستخدم مصطلحات تقنية معقدة إلا إذا كان المستخدم يبدو متقدماً أو طلب ذلك.\n` +
-    `تجنّب ذكر الأكواد البرمجية إلا إذا كان السؤال برمجي صريح.\n` +
-    `لا تذكر أنك نموذج ذكاء اصطناعي أو أنك روبوت.\n\n`;
+    `تجنب المصطلحات التقنية المعقدة ولا تذكر أنك روبوت.\n\n`;
 
   if (context && context.title) {
     base +=
-      `معلومات سياقية من محتوى ${CONFIG.BRAND_NAME} (يمكنك الاستفادة منها إن كانت مفيدة للسؤال):\n` +
+      `معلومات من محتوى ${CONFIG.BRAND_NAME}:\n` +
       `العنوان: ${context.title}\n` +
       `الوصف: ${context.description || ""}\n` +
       `مقتطف: ${context.excerpt || ""}\n\n`;
@@ -62,7 +61,7 @@ function buildPrompt(question, context) {
 
   base += `سؤال المستخدم:\n${question}\n\n`;
   base +=
-    "الآن قدّم إجابة عملية وواضحة بالعربية، مع نصائح قابلة للتنفيذ، دون ذكر تفاصيل تقنية زائدة أو الإشارة إلى واجهات برمجة تطبيقات.";
+    "قدّم إجابة عملية وواضحة بالعربية الفصحى، بأسلوب واقعي ومهني يشجع المستخدم على التطبيق أو اتخاذ القرار.";
   return base;
 }
 
@@ -70,7 +69,6 @@ function buildPrompt(question, context) {
 
 async function callGemini(question, context) {
   if (!GEMINI_API_KEY) return null;
-
   const prompt = buildPrompt(question, context);
 
   const url =
@@ -78,12 +76,7 @@ async function callGemini(question, context) {
     GEMINI_API_KEY;
 
   const body = {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: prompt }]
-      }
-    ]
+    contents: [{ role: "user", parts: [{ text: prompt }] }]
   };
 
   const res = await fetch(url, {
@@ -93,17 +86,15 @@ async function callGemini(question, context) {
   });
 
   if (!res.ok) {
-    console.error("Gemini HTTP Error:", res.status, await res.text());
+    console.error("Gemini HTTP Error:", res.status);
     throw new Error("Gemini HTTP " + res.status);
   }
 
   const data = await res.json();
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const text = parts
-    .map((p) => (p.text || "").trim())
+  const text = data?.candidates?.[0]?.content?.parts
+    ?.map((p) => (p.text || "").trim())
     .join(" ")
     .trim();
-
   return text || null;
 }
 
@@ -111,7 +102,6 @@ async function callGemini(question, context) {
 
 async function callOpenAI(question, context) {
   if (!OPENAI_API_KEY) return null;
-
   const prompt = buildPrompt(question, context);
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -135,13 +125,12 @@ async function callOpenAI(question, context) {
   });
 
   if (!res.ok) {
-    console.error("OpenAI HTTP Error:", res.status, await res.text());
+    console.error("OpenAI HTTP Error:", res.status);
     throw new Error("OpenAI HTTP " + res.status);
   }
 
   const data = await res.json();
-  const text = data?.choices?.[0]?.message?.content?.trim() || null;
-  return text;
+  return data?.choices?.[0]?.message?.content?.trim() || null;
 }
 
 // ======================= المسار الرئيسي: /api/nova-ai =======================
@@ -149,23 +138,15 @@ async function callOpenAI(question, context) {
 app.post("/api/nova-ai", async (req, res) => {
   try {
     const { question, context, prefer } = req.body || {};
-
     if (!question || typeof question !== "string") {
-      return res
-        .status(400)
-        .json({ ok: false, error: "no_question", message: "Missing 'question'." });
+      return res.status(400).json({ ok: false, error: "no_question" });
     }
 
     if (CONFIG.LOG_REQUESTS) {
-      console.log("🗨️ New request:", {
-        question: question.slice(0, 80) + (question.length > 80 ? "..." : ""),
-        hasContext: !!context
-      });
+      console.log("🗨️ سؤال جديد:", question.slice(0, 70) + "...");
     }
 
     let answer = null;
-
-    // تحديد من نستخدم أولاً: Gemini أو OpenAI
     const useGeminiFirst =
       prefer === "gemini-first"
         ? true
@@ -176,27 +157,27 @@ app.post("/api/nova-ai", async (req, res) => {
     if (useGeminiFirst) {
       try {
         answer = await callGemini(question, context);
-      } catch (e) {
-        console.warn("Gemini failed, trying OpenAI…", e.message);
+      } catch {
+        console.warn("⚠️ Gemini فشل — الانتقال إلى OpenAI");
       }
       if (!answer) {
         try {
           answer = await callOpenAI(question, context);
-        } catch (e) {
-          console.warn("OpenAI also failed:", e.message);
+        } catch {
+          console.warn("⚠️ OpenAI أيضًا فشل");
         }
       }
     } else {
       try {
         answer = await callOpenAI(question, context);
-      } catch (e) {
-        console.warn("OpenAI failed, trying Gemini…", e.message);
+      } catch {
+        console.warn("⚠️ OpenAI فشل — الانتقال إلى Gemini");
       }
       if (!answer) {
         try {
           answer = await callGemini(question, context);
-        } catch (e) {
-          console.warn("Gemini also failed:", e.message);
+        } catch {
+          console.warn("⚠️ Gemini أيضًا فشل");
         }
       }
     }
@@ -204,30 +185,49 @@ app.post("/api/nova-ai", async (req, res) => {
     if (!answer) {
       return res.json({
         ok: false,
-        error: "ai_failed",
-        message: "تعذر توليد الإجابة حالياً من نماذج الذكاء الاصطناعي."
+        message: "تعذر توليد الإجابة حالياً."
       });
     }
 
-    res.json({
-      ok: true,
-      answer
-    });
+    res.json({ ok: true, answer });
   } catch (err) {
     console.error("Proxy error:", err);
     res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
-// ================== مسار اختباري للتأكد أن السيرفر شغال ==================
+// ============================ 📩 Feedback API ============================
+// يجمع الإيميلات من المستخدمين داخل الدردشة ويخزنها في feedback.csv
+
+app.post("/api/feedback", async (req, res) => {
+  try {
+    const { email, name, intent } = req.body || {};
+    if (!email) return res.status(400).json({ ok: false, error: "missing_email" });
+
+    const timestamp = new Date().toISOString();
+    const safeName = name || "N/A";
+    const safeIntent = intent || "unspecified";
+    const line = `${timestamp},${safeName},${email},${safeIntent}\n`;
+
+    fs.appendFileSync("feedback.csv", line, "utf8");
+    console.log("📥 Email saved:", { email, intent });
+
+    return res.json({ ok: true, message: "Email stored successfully." });
+  } catch (err) {
+    console.error("⚠️ Feedback error:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
+
+// ================== اختبار التشغيل ==================
 
 app.get("/", (req, res) => {
-  res.send("✅ Nova AI Proxy is running.");
+  res.send("✅ Nova AI Proxy + Email Collector is running.");
 });
 
 // ============================= تشغيل السيرفر =============================
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Nova AI Proxy listening on port", PORT);
+  console.log("🚀 NovaProxy v1.5 running on port", PORT);
 });
