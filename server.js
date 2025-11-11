@@ -1,47 +1,49 @@
-// NovaProxy v1.6 Fusion – Hybrid AI Proxy + Smart Feedback Collector
-// Developer: Mohammed Abu Snaina – NOVALINK.AI
+// NovaProxy v1.0 — Hybrid AI Proxy (Gemini → OpenAI)
+// مصمم ليعمل مع NovaBot v4.6 أو أي بوت مشابه.
+// المطوّر: محمد أبو سنينة – NOVALINK.AI
 
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const fetch = require("node-fetch");
 
-// ======================= ⚙️ CONFIG =======================
+// ======================= ⚙️ CONFIG – إعدادات السيرفر =======================
+// يمكنك تعديل هذا القسم فقط لكل عميل جديد دون لمس بقية الكود.
+
 const CONFIG = {
-  BRAND_NAME: "نوفا لينك",
-  USE_GEMINI_FIRST_BY_DEFAULT: true,
+  BRAND_NAME: "نوفا لينك", // اسم العلامة التجارية التي سيذكرها البوت في البرومبت
+  USE_GEMINI_FIRST_BY_DEFAULT: true, // true: Gemini أولاً، false: OpenAI أولاً
   ALLOWED_ORIGINS: [
     "https://novalink-ai.com",
     "https://www.novalink-ai.com"
+    // يمكنك إضافة دومينات عملائك هنا لاحقاً
   ],
-  LOG_REQUESTS: true,
-  GITHUB: {
-    USERNAME: "novalink2020-hub",
-    REPO: "novabot-proxy",
-    FILE_PATH: "feedback.csv",
-    BRANCH: "main"
-  }
+  LOG_REQUESTS: true // true لطباعة بعض المعلومات في الـ Console للمراجعة
 };
 
+// مفاتيح API (لا تضعها في الكود، فقط في ملفات البيئة أو إعدادات Render)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 
-// =========================================================
+// ============================= إنشاء تطبيق Express =========================
+
 const app = express();
 app.use(express.json());
 
+// CORS – السماح فقط للدومينات المحددة في CONFIG
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (CONFIG.ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      if (!origin) return callback(null, true); // يسمح لأدوات مثل Postman
+      if (CONFIG.ALLOWED_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
       return callback(new Error("Not allowed by CORS"), false);
-    },
+    }
   })
 );
 
-// ============ بناء البرومبت ===================
+// ====================== دالة بناء البرومبت لنوفا لينك ======================
+
 function buildPrompt(question, context) {
   let base =
     `أنت مساعد عربي محترف يمثل منصة ${CONFIG.BRAND_NAME} المتخصصة في الذكاء الاصطناعي وتطوير الأعمال.\n` +
@@ -52,7 +54,7 @@ function buildPrompt(question, context) {
 
   if (context && context.title) {
     base +=
-      `معلومات سياقية من محتوى ${CONFIG.BRAND_NAME}:\n` +
+      `معلومات سياقية من محتوى ${CONFIG.BRAND_NAME} (يمكنك الاستفادة منها إن كانت مفيدة للسؤال):\n` +
       `العنوان: ${context.title}\n` +
       `الوصف: ${context.description || ""}\n` +
       `مقتطف: ${context.excerpt || ""}\n\n`;
@@ -60,70 +62,110 @@ function buildPrompt(question, context) {
 
   base += `سؤال المستخدم:\n${question}\n\n`;
   base +=
-    "الآن قدّم إجابة عملية وواضحة بالعربية، مع نصائح قابلة للتنفيذ، دون تفاصيل تقنية زائدة.";
+    "الآن قدّم إجابة عملية وواضحة بالعربية، مع نصائح قابلة للتنفيذ، دون ذكر تفاصيل تقنية زائدة أو الإشارة إلى واجهات برمجة تطبيقات.";
   return base;
 }
 
-// ============ Gemini =============
+// =========================== استدعاء Gemini ===========================
+
 async function callGemini(question, context) {
   if (!GEMINI_API_KEY) return null;
+
   const prompt = buildPrompt(question, context);
+
   const url =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" +
     GEMINI_API_KEY;
 
-  const body = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+  const body = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text: prompt }]
+      }
+    ]
+  };
+
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(body)
   });
 
-  if (!res.ok) throw new Error("Gemini HTTP " + res.status);
+  if (!res.ok) {
+    console.error("Gemini HTTP Error:", res.status, await res.text());
+    throw new Error("Gemini HTTP " + res.status);
+  }
+
   const data = await res.json();
   const parts = data?.candidates?.[0]?.content?.parts || [];
-  const text = parts.map((p) => (p.text || "").trim()).join(" ").trim();
+  const text = parts
+    .map((p) => (p.text || "").trim())
+    .join(" ")
+    .trim();
+
   return text || null;
 }
 
-// ============ OpenAI =============
+// =========================== استدعاء OpenAI ===========================
+
 async function callOpenAI(question, context) {
   if (!OPENAI_API_KEY) return null;
+
   const prompt = buildPrompt(question, context);
 
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer " + OPENAI_API_KEY,
+      Authorization: "Bearer " + OPENAI_API_KEY
     },
     body: JSON.stringify({
       model: "gpt-4.1-mini",
       messages: [
-        { role: "system", content: `أنت مساعد عربي يمثل ${CONFIG.BRAND_NAME}.` },
-        { role: "user", content: prompt },
+        {
+          role: "system",
+          content: `أنت مساعد عربي يمثل علامة ${CONFIG.BRAND_NAME} وتقدّم إجابات عملية وبسيطة.`
+        },
+        { role: "user", content: prompt }
       ],
       temperature: 0.6,
-      max_tokens: 500,
-    }),
+      max_tokens: 500
+    })
   });
 
-  if (!res.ok) throw new Error("OpenAI HTTP " + res.status);
+  if (!res.ok) {
+    console.error("OpenAI HTTP Error:", res.status, await res.text());
+    throw new Error("OpenAI HTTP " + res.status);
+  }
+
   const data = await res.json();
-  return data?.choices?.[0]?.message?.content?.trim() || null;
+  const text = data?.choices?.[0]?.message?.content?.trim() || null;
+  return text;
 }
 
-// ============ API الرئيسي =============
+// ======================= المسار الرئيسي: /api/nova-ai =======================
+
 app.post("/api/nova-ai", async (req, res) => {
   try {
     const { question, context, prefer } = req.body || {};
-    if (!question || typeof question !== "string")
-      return res.status(400).json({ ok: false, error: "no_question" });
 
-    if (CONFIG.LOG_REQUESTS)
-      console.log("🗨️ New request:", question.slice(0, 70));
+    if (!question || typeof question !== "string") {
+      return res
+        .status(400)
+        .json({ ok: false, error: "no_question", message: "Missing 'question'." });
+    }
+
+    if (CONFIG.LOG_REQUESTS) {
+      console.log("🗨️ New request:", {
+        question: question.slice(0, 80) + (question.length > 80 ? "..." : ""),
+        hasContext: !!context
+      });
+    }
 
     let answer = null;
+
+    // تحديد من نستخدم أولاً: Gemini أو OpenAI
     const useGeminiFirst =
       prefer === "gemini-first"
         ? true
@@ -132,86 +174,60 @@ app.post("/api/nova-ai", async (req, res) => {
         : CONFIG.USE_GEMINI_FIRST_BY_DEFAULT;
 
     if (useGeminiFirst) {
-      answer = await callGemini(question, context).catch(() => null);
-      if (!answer) answer = await callOpenAI(question, context).catch(() => null);
+      try {
+        answer = await callGemini(question, context);
+      } catch (e) {
+        console.warn("Gemini failed, trying OpenAI…", e.message);
+      }
+      if (!answer) {
+        try {
+          answer = await callOpenAI(question, context);
+        } catch (e) {
+          console.warn("OpenAI also failed:", e.message);
+        }
+      }
     } else {
-      answer = await callOpenAI(question, context).catch(() => null);
-      if (!answer) answer = await callGemini(question, context).catch(() => null);
+      try {
+        answer = await callOpenAI(question, context);
+      } catch (e) {
+        console.warn("OpenAI failed, trying Gemini…", e.message);
+      }
+      if (!answer) {
+        try {
+          answer = await callGemini(question, context);
+        } catch (e) {
+          console.warn("Gemini also failed:", e.message);
+        }
+      }
     }
 
-    if (!answer)
-      return res.json({ ok: false, error: "ai_failed", message: "تعذر توليد الإجابة حالياً." });
+    if (!answer) {
+      return res.json({
+        ok: false,
+        error: "ai_failed",
+        message: "تعذر توليد الإجابة حالياً من نماذج الذكاء الاصطناعي."
+      });
+    }
 
-    res.json({ ok: true, answer });
+    res.json({
+      ok: true,
+      answer
+    });
   } catch (err) {
     console.error("Proxy error:", err);
     res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
-// ===============================================================
-// 📩  مسار جديد: /api/feedback — لحفظ الإيميلات في GitHub
-// ===============================================================
-app.post("/api/feedback", async (req, res) => {
-  try {
-    const { email, name = "", note = "" } = req.body || {};
-    if (!email || !email.includes("@")) {
-      return res.status(400).json({ ok: false, error: "invalid_email" });
-    }
+// ================== مسار اختباري للتأكد أن السيرفر شغال ==================
 
-    const entry = `${new Date().toISOString()},${email},${name},${note}\n`;
-
-    const fileUrl = `https://api.github.com/repos/${CONFIG.GITHUB.USERNAME}/${CONFIG.GITHUB.REPO}/contents/${CONFIG.GITHUB.FILE_PATH}`;
-    const headers = {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      "Content-Type": "application/json",
-      Accept: "application/vnd.github+json",
-    };
-
-    // تحقق من وجود الملف الحالي
-    let sha = null;
-    let existingContent = "";
-    const getRes = await fetch(fileUrl, { headers });
-    if (getRes.ok) {
-      const fileData = await getRes.json();
-      sha = fileData.sha;
-      existingContent = Buffer.from(fileData.content, "base64").toString("utf8");
-    }
-
-    const newContent = existingContent + entry;
-    const encoded = Buffer.from(newContent, "utf8").toString("base64");
-
-    const body = {
-      message: `Add feedback entry for ${email}`,
-      content: encoded,
-      branch: CONFIG.GITHUB.BRANCH,
-    };
-    if (sha) body.sha = sha;
-
-    const putRes = await fetch(fileUrl, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!putRes.ok) {
-      const errText = await putRes.text();
-      throw new Error("GitHub write error: " + errText);
-    }
-
-    console.log(`✅ Email stored: ${email}`);
-    res.json({ ok: true, message: "تم حفظ البريد بنجاح في GitHub." });
-  } catch (err) {
-    console.error("⚠️ Feedback error:", err.message);
-    res.status(500).json({ ok: false, error: "feedback_failed" });
-  }
+app.get("/", (req, res) => {
+  res.send("✅ Nova AI Proxy is running.");
 });
 
-// ================== اختبار ==================
-app.get("/", (req, res) => res.send("✅ NovaProxy v1.6 Fusion is running."));
+// ============================= تشغيل السيرفر =============================
 
-// ================== تشغيل ==================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 NovaProxy Fusion running on port", PORT);
+  console.log("🚀 Nova AI Proxy listening on port", PORT);
 });
