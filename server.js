@@ -1,23 +1,14 @@
 // =======================================================
-// NovaProxy v2.1 LTS — Stable + Smart Marketing (Gemini → OpenAI)
-// Works with NovaBot v4.6–v4.8
-// Author: Mohammed Abu Snaina – NOVALINK.AI
+// NovaProxy v2.2 — Smart Behavior & Tone Adaptive Edition
+// Gemini → (fallback) OpenAI | Intent + Tone + Dialect + Memory + Metrics
+// المطوّر: محمد أبو سنينة – NOVALINK.AI
 // =======================================================
 
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-
-// ✅ fetch: استخدم المدمج في Node 18+، أو ارجع لـ node-fetch (CommonJS)
-let fetchRef = global.fetch;
-if (!fetchRef) {
-  try {
-    fetchRef = require("node-fetch");
-  } catch (_) {
-    console.warn("⚠️ 'node-fetch' غير مثبت. يوصى بإضافته احتياطياً: npm i node-fetch@2");
-  }
-}
-const fetch = (...args) => fetchRef(...args);
+// استخدم node-fetch@2 للحفاظ على require (CommonJS)
+const fetch = require("node-fetch");
 
 // =======================================================
 // ⚙️ CONFIG
@@ -30,24 +21,21 @@ const CONFIG = {
     "https://www.novalink-ai.com"
   ],
   LOG_REQUESTS: true,
-
-  // 🧠 تسويق ذكي خفيف ومستقر
   SMART_MARKETING: {
     ENABLED: true,
-    MODE: "hybrid" // توازن بين التوعوي والبيعي
+    MODE: "hybrid" // "hybrid" = مزيج متوازن
   },
-
-  // 📬 تجميع الإيميلات
   FEEDBACK: {
     ENABLED: true,
     GITHUB: {
       ENABLED: true,
       OWNER: "novalink2020-hub",
       REPO: "novabot-proxy",
-      FILE_PATH: "feedback.csv" // سيُنشأ تلقائياً إن لم يوجد
+      FEEDBACK_FILE: "feedback.csv", // CSV lead log
+      METRICS_FILE: "metrics.json"   // intent conversion counters
     },
     REACH: {
-      ENABLED: true, // عطلها لو ما عندك مفتاح
+      ENABLED: true,
       API_URL: "https://reach.hostinger.com/api/v1/subscribers",
       API_KEY: process.env.REACH_API_KEY || ""
     }
@@ -55,310 +43,500 @@ const CONFIG = {
 };
 
 // =======================================================
-// 🔐 ENV
+// 🔐 KEYS
 // =======================================================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-const GITHUB_TOKEN   = process.env.GITHUB_TOKEN   || "";
-
-// طباعة حالة المفاتيح للمساعدة في التشخيص
-console.log("🔍 Gemini Key:", GEMINI_API_KEY ? "✅ Loaded" : "❌ Missing");
-console.log("🔍 OpenAI Key:", OPENAI_API_KEY ? "✅ Loaded" : "❌ Missing");
-console.log("🔍 GitHub Token:", GITHUB_TOKEN ? "✅ Loaded" : "❌ Missing");
-console.log("🔍 Reach Key:", (CONFIG.FEEDBACK.REACH.ENABLED && CONFIG.FEEDBACK.REACH.API_KEY) ? "✅ Loaded" : "—");
+const GITHUB_TOKEN  = process.env.GITHUB_TOKEN || "";
 
 // =======================================================
 // 🚀 APP
 // =======================================================
 const app = express();
 app.use(express.json({ limit: "1mb" }));
-
 app.use(cors({
-  origin(origin, cb) {
-    if (!origin) return cb(null, true); // يسمح لأدوات الاختبار
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
     if (CONFIG.ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
     return cb(new Error("Not allowed by CORS"), false);
   }
 }));
 
 // =======================================================
-// 🧠 Intent Analyzer (خيار خفيف لا يكسر الاستقرار)
+// 🧠 Utilities
 // =======================================================
-function analyzeIntent(q) {
-  const t = (q || "").toLowerCase();
-  if (/سعر|شراء|اشتراك|تكلفة|خدمة|طلب/.test(t)) return "PURCHASE";
-  if (/تعلم|شرح|كيف|افهم|خطوات|أساسيات/.test(t)) return "LEARNING";
-  if (/تسويق|مبيعات|اعلان|ترويج|تحويل/.test(t)) return "MARKETING";
-  if (/تعاون|شراكة|رعاية|مشروع مشترك/.test(t)) return "COLLABORATION";
-  if (/نوفا لينك|من أنتم|رؤيتكم|قصتكم/.test(t)) return "ABOUT";
+
+// كشف لغة الرسالة (عربي/إنجليزي) بسيط
+function detectLanguage(text = "") {
+  const enOnly = /^[\s0-9a-zA-Z.,;:!?'"()@#%&*+\-_/\\|[\]{}<>]+$/;
+  if (enOnly.test(text.trim())) return "en";
+  return "ar";
+}
+
+// كشف لهجة عربية مبسّط
+function detectDialect(arText) {
+  const t = (arText || "").toLowerCase();
+  const hasAny = (arr) => arr.some(w => t.includes(w));
+
+  const gulf = ["وش", "ليه", "مرة", "واجد", "هاالشي", "يعطيك", "شلون"];
+  const egy  = ["ازاي","كده","ليه","ماشي","عايز","دلوقتي","جامد"];
+  const lev  = ["ليش","شو","هيك","كتير","لسا","هلق","تمام"];
+  const magh = ["بزاف","علاش","ديما","برشا","تصاور","حاجة"];
+
+  if (hasAny(gulf)) return "gulf";
+  if (hasAny(egy))  return "egyptian";
+  if (hasAny(lev))  return "levant";
+  if (hasAny(magh)) return "maghrebi";
+  return "msa"; // فصحى
+}
+
+// كشف نية المستخدم موسّع
+function analyzeIntent(question = "") {
+  const q = (question || "").toLowerCase();
+
+  const hit = (list) => list.some(w => q.includes(w));
+
+  if (hit(["سعر","شراء","اشتراك","تكلفة","خدمة","طلب","باقة","عروض"])) return "PURCHASE";
+  if (hit(["تعلم","شرح","كيف","افهم","خطوات","أساسيات","مقال","تدوينة"])) return "LEARNING";
+  if (hit(["تسويق","مبيعات","اعلان","ترويج","تحويل","براند","علامة"])) return "MARKETING";
+  if (hit(["تعاون","شراكة","رعاية","مشروع مشترك","اتفاق","تواصل معنا"])) return "COLLABORATION";
+  if (hit(["نوفا لينك","من انتم","من أنتم","رؤيتكم","هدفكم","قصتكم"])) return "ABOUT";
   return "GENERAL";
 }
 
-// =======================================================
-// 🧾 Prompt Builder (محافظ على روح v1 + حقن تسويقي لطيف)
-// =======================================================
-function buildPrompt(question, context, intent) {
-  let p =
-    `أنت مساعد عربي يمثل منصة ${CONFIG.BRAND_NAME} المتخصصة في الذكاء الاصطناعي وتطوير الأعمال.\n` +
-    `أجب بجمل قصيرة وواضحة وبأسلوب عملي يشبه استشارة صديق خبير.\n` +
-    `تجنب المصطلحات التقنية المفرطة إلا إذا طلبها المستخدم.\n` +
-    `لا تذكر أنك نموذج ذكاء اصطناعي.\n`;
+// ذاكرة قصيرة: استخلص آخر 3 تبادلات user/assistant
+function buildHistoryBlock(history = [], lang = "ar") {
+  if (!Array.isArray(history) || !history.length) return "";
+  const last = history.slice(-6); // 3 تبادلات
+  const lines = last.map(h => {
+    const role = h.role === "assistant" ? (lang === "en" ? "assistant" : "المساعد") : (lang === "en" ? "user" : "المستخدم");
+    return `${role}: ${h.content || ""}`;
+  }).join("\n");
+  return lines ? `\n\n${lang === "en" ? "Recent chat history" : "تاريخ المحادثة الأخير"}:\n${lines}\n` : "";
+}
 
-  if (CONFIG.SMART_MARKETING.ENABLED) {
-    if (intent === "PURCHASE") {
-      p += `قدّم حلاً عمليًا ومباشرًا، ويمكنك اقتراح خدمة أو باقة بشكل مهني وغير مُلح.\n`;
-    } else if (intent === "LEARNING") {
-      p += `اختم بخطوات بسيطة أو روابط تعلّم عملية.\n`;
-    } else if (intent === "MARKETING") {
-      p += `أبرز أثر الأدوات الذكية على النتائج التسويقية عندما يكون ذلك مناسبًا.\n`;
-    } else if (intent === "COLLABORATION") {
-      p += `اجعل النبرة تعاونية ومشجعة للتواصل.\n`;
+// CTA ديناميكي حسب النية + اللغة
+function buildCTA(intent, lang = "ar") {
+  if (lang === "en") {
+    switch (intent) {
+      case "PURCHASE":
+        return {
+          type: "purchase",
+          text: "Would you like tailored help choosing the right solution? Visit our Services or leave your email and our team will contact you.",
+          url: "https://novalink-ai.com/services-khdmat-nwfa-lynk"
+        };
+      case "LEARNING":
+        return {
+          type: "learning",
+          text: "Want practical AI articles delivered to your inbox? Share your email and we’ll send curated guides.",
+          url: "https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal"
+        };
+      case "COLLABORATION":
+        return {
+          type: "collaboration",
+          text: "We’re open to partnerships. Leave your email or use the contact section at the homepage footer.",
+          url: "https://novalink-ai.com#contact"
+        };
+      case "MARKETING":
+        return {
+          type: "marketing",
+          text: "Want a practical AI marketing starter kit? Enter your email and we’ll line up action steps.",
+          url: "https://novalink-ai.com/services-khdmat-nwfa-lynk"
+        };
+      case "ABOUT":
+        return {
+          type: "about",
+          text: "Learn more about NovaLink, or subscribe to receive our latest insights.",
+          url: "https://novalink-ai.com/about-us-althkaa-alastnaay"
+        };
+      default:
+        return {
+          type: "general",
+          text: "If you’d like, share your email to receive helpful updates and personalized assistance.",
+          url: "https://novalink-ai.com/ashtrk-alan"
+        };
     }
   }
 
+  // Arabic
+  switch (intent) {
+    case "PURCHASE":
+      return {
+        type: "purchase",
+        text: "هل ترغب بمساعدة مخصصة لاختيار الحل الأنسب؟ تفضّل بزيارة صفحة الخدمات أو اترك بريدك ليتواصل معك فريق نوفا لينك.",
+        url: "https://novalink-ai.com/services-khdmat-nwfa-lynk"
+      };
+    case "LEARNING":
+      return {
+        type: "learning",
+        text: "هل تودّ أن تصلك مقالات عملية في الذكاء الاصطناعي؟ ضع بريدك ونرسل لك ملخصات مركّزة.",
+        url: "https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal"
+      };
+    case "COLLABORATION":
+      return {
+        type: "collaboration",
+        text: "فريق نوفا لينك منفتح على الشراكات. أرسل بريدك أو استخدم قسم تواصل معنا أسفل الصفحة الرئيسية.",
+        url: "https://novalink-ai.com#contact"
+      };
+    case "MARKETING":
+      return {
+        type: "marketing",
+        text: "هل ترغب بدليل عملي للتسويق بالذكاء الاصطناعي؟ أدخل بريدك وسنرتّب لك الخطوات.",
+        url: "https://novalink-ai.com/services-khdmat-nwfa-lynk"
+      };
+    case "ABOUT":
+      return {
+        type: "about",
+        text: "تعرّف أكثر على نوفا لينك، أو اشترك ليصلك أحدث ما ننشره.",
+        url: "https://novalink-ai.com/about-us-althkaa-alastnaay"
+      };
+    default:
+      return {
+        type: "general",
+        text: "يسعدنا أن نرافقك خطوة بخطوة—اترك بريدك لتصلك تحديثات ونصائح عملية من نوفا لينك.",
+        url: "https://novalink-ai.com/ashtrk-alan"
+      };
+  }
+}
+
+// بناء البرومبت مع النية + اللهجة + التاريخ + اللغة
+function buildPrompt(question, context, intent, lang, dialect, historyBlock) {
+  const isEN = lang === "en";
+
+  const toneMap = {
+    PURCHASE: isEN
+      ? "Use a consultative, professional tone, focus on concrete solutions."
+      : "استخدم نبرة استشارية مهنية وركّز على حلول عملية مناسبة.",
+    LEARNING: isEN
+      ? "Use a clear, step-by-step teaching tone."
+      : "استخدم نبرة تعليمية واضحة على شكل خطوات بسيطة.",
+    MARKETING: isEN
+      ? "Use a motivational, results-oriented tone—light, not pushy."
+      : "استخدم نبرة تحفيزية تركّز على النتائج، بخفة دون إلحاح بيعي.",
+    COLLABORATION: isEN
+      ? "Use a friendly, collaborative tone that invites partnership."
+      : "استخدم نبرة ودودة ومتعاونة تشجّع على الشراكة.",
+    ABOUT: isEN
+      ? "Use a concise, informative tone about the brand."
+      : "استخدم نبرة تعريفية موجزة وواضحة عن العلامة.",
+    GENERAL: isEN
+      ? "Use a neutral, helpful, and concise tone."
+      : "استخدم نبرة محايدة، مفيدة، وموجزة."
+  };
+
+  const dialectNote = isEN
+    ? "Answer in clear Modern Standard Arabic if the user is Arabic; otherwise answer in the user's language. If Arabic, you may sprinkle a natural, minimal hint of the user's dialect when appropriate (no exaggeration)."
+    : "أجب بالعربية الفصحى السلسة، ويمكنك إدخال لمسة بسيطة وطبيعية من لهجة المستخدم عند اللزوم دون مبالغة.";
+
+  const langHeader = isEN
+    ? `You are an Arabic/English AI assistant representing ${CONFIG.BRAND_NAME} for AI & business growth.`
+    : `أنت مساعد ذكاء اصطناعي يمثل منصة ${CONFIG.BRAND_NAME} للذكاء الاصطناعي وتطوير الأعمال.`;
+
+  const instruction = isEN
+    ? `Write short, practical answers. Avoid deep technicalities unless requested. ${toneMap[intent || "GENERAL"] || ""}`
+    : `اكتب إجابات قصيرة وعملية. تجنّب التفاصيل التقنية العميقة إلا عند الطلب. ${toneMap[intent || "GENERAL"] || ""}`;
+
+  let ctx = "";
   if (context && context.title) {
-    p += `\nمن محتوى ${CONFIG.BRAND_NAME}:\n` +
-         `العنوان: ${context.title}\n` +
-         `الوصف: ${context.description || ""}\n` +
-         `مقتطف: ${context.excerpt || ""}\n`;
+    ctx = isEN
+      ? `\nFrom ${CONFIG.BRAND_NAME} content:\nTitle: ${context.title}\nDescription: ${context.description || ""}\nExcerpt: ${context.excerpt || ""}\n`
+      : `\nمن محتوى ${CONFIG.BRAND_NAME}:\nالعنوان: ${context.title}\nالوصف: ${context.description || ""}\nمقتطف: ${context.excerpt || ""}\n`;
   }
 
-  p += `\nسؤال المستخدم:\n${question}\n\n`;
-  p += `أجب بوضوح دون مبالغة تسويقية أو تفاصيل تقنية زائدة.`;
-  return p;
+  const qLabel = isEN ? "User question" : "سؤال المستخدم";
+  const hist = historyBlock || "";
+
+  return `${langHeader}
+${instruction}
+${dialectNote}
+${ctx}
+${qLabel}:
+${question}
+${hist}
+${isEN ? "Now answer clearly and practically." : "الآن قدّم إجابة واضحة وعملية."}`;
 }
 
 // =======================================================
-// 🤖 AI Calls (حافظ على أسلوب v1 في التبديل)
+// 🤖 LLM Calls (Gemini with retry → OpenAI fallback)
 // =======================================================
-async function callGemini(question, context, intent) {
-  if (!GEMINI_API_KEY) return null;
-
-  const prompt = buildPrompt(question, context, intent);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-
+async function callGemini(model, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  const body = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
-    // مهلة معقولة لتفادي التعليق
-    signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined
+    body: JSON.stringify(body)
   });
-
   if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    console.error("Gemini HTTP Error:", res.status, txt);
-    return null;
+    const errTxt = await res.text().catch(() => "");
+    throw new Error(`Gemini HTTP ${res.status} ${errTxt}`);
   }
-
-  const data = await res.json().catch(() => null);
+  const data = await res.json();
   const parts = data?.candidates?.[0]?.content?.parts || [];
   const text = parts.map(p => (p.text || "").trim()).join(" ").trim();
   return text || null;
 }
 
-async function callOpenAI(question, context, intent) {
+async function callOpenAI(prompt) {
   if (!OPENAI_API_KEY) return null;
-
-  const prompt = buildPrompt(question, context, intent);
-
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: "Bearer " + OPENAI_API_KEY
+      Authorization: `Bearer ${OPENAI_API_KEY}`
     },
     body: JSON.stringify({
       model: "gpt-4.1-mini",
       messages: [
-        { role: "system", content: `أنت مساعد يمثل ${CONFIG.BRAND_NAME} وتقدّم إجابات عملية وبسيطة.` },
+        { role: "system", content: `You are ${CONFIG.BRAND_NAME} assistant.` },
         { role: "user", content: prompt }
       ],
       temperature: 0.6,
-      max_tokens: 500
+      max_tokens: 300
     })
   });
-
   if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    console.error("OpenAI HTTP Error:", res.status, txt);
-    return null;
+    const errTxt = await res.text().catch(() => "");
+    throw new Error(`OpenAI HTTP ${res.status} ${errTxt}`);
   }
-
-  const data = await res.json().catch(() => null);
+  const data = await res.json();
   const text = data?.choices?.[0]?.message?.content?.trim() || null;
-  return text || null;
+  return text;
+}
+
+async function askLLM(question, context, intent, lang, dialect, history) {
+  const prompt = buildPrompt(
+    question,
+    context,
+    intent,
+    lang,
+    dialect,
+    buildHistoryBlock(history, lang)
+  );
+
+  const order = CONFIG.USE_GEMINI_FIRST_BY_DEFAULT
+    ? ["gemini-2.5-flash", "gemini-1.5-flash", "openai"]
+    : ["openai", "gemini-2.5-flash", "gemini-1.5-flash"];
+
+  for (const who of order) {
+    try {
+      if (who.startsWith("gemini")) {
+        if (!GEMINI_API_KEY) continue;
+        const ans = await callGemini(who, prompt);
+        if (ans) return { provider: who, answer: ans };
+      } else if (who === "openai") {
+        const ans = await callOpenAI(prompt);
+        if (ans) return { provider: "openai", answer: ans };
+      }
+    } catch (e) {
+      console.warn(`${who} failed:`, e.message);
+      continue;
+    }
+  }
+  return { provider: null, answer: null };
 }
 
 // =======================================================
-// 🛣️ /api/nova-ai — المستقر
+// 🗂️ GitHub helpers (feedback & metrics)
+// =======================================================
+async function ghGetFile(owner, repo, path) {
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const r = await fetch(url, { headers: { Authorization: `token ${GITHUB_TOKEN}` } });
+  if (r.status === 404) return { exists: false, sha: null, content: "" };
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`GitHub GET failed: ${r.status} ${t}`);
+  }
+  const j = await r.json();
+  const buff = Buffer.from(j.content || "", "base64").toString("utf-8");
+  return { exists: true, sha: j.sha, content: buff };
+}
+
+async function ghPutFile(owner, repo, path, content, sha = undefined, message = "update") {
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const body = {
+    message,
+    content: Buffer.from(content, "utf-8").toString("base64"),
+    ...(sha ? { sha } : {})
+  };
+  const r = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `token ${GITHUB_TOKEN}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`GitHub PUT failed: ${r.status} ${t}`);
+  }
+  return true;
+}
+
+// حدث تحويل (لرفع معدل التحويل لكل نية) — يُستدعى ضمن /api/feedback
+async function bumpMetrics(intent) {
+  const { OWNER, REPO, METRICS_FILE } = CONFIG.FEEDBACK.GITHUB;
+  try {
+    const cur = await ghGetFile(OWNER, REPO, METRICS_FILE);
+    let obj = { conversions: {}, updated_at: new Date().toISOString() };
+    if (cur.exists) {
+      try { obj = JSON.parse(cur.content || "{}"); } catch (_) {}
+    }
+    const key = intent || "GENERAL";
+    obj.conversions = obj.conversions || {};
+    obj.conversions[key] = (obj.conversions[key] || 0) + 1;
+    obj.updated_at = new Date().toISOString();
+    await ghPutFile(OWNER, REPO, METRICS_FILE, JSON.stringify(obj, null, 2), cur.sha, "bump metrics");
+  } catch (e) {
+    console.warn("Metrics update failed:", e.message);
+  }
+}
+
+// =======================================================
+// 📬 API: Nova AI
 // =======================================================
 app.post("/api/nova-ai", async (req, res) => {
   try {
-    const { question, context, prefer } = req.body || {};
-
+    const { question, context, history } = req.body || {};
     if (!question || typeof question !== "string") {
-      return res.status(400).json({ ok: false, error: "no_question", message: "Missing 'question'." });
+      return res.status(400).json({ ok: false, error: "no_question" });
     }
+
+    const language = detectLanguage(question);       // "ar" | "en"
+    const dialect  = language === "ar" ? detectDialect(question) : "n/a";
+    const intent   = analyzeIntent(question);
 
     if (CONFIG.LOG_REQUESTS) {
-      console.log("🗨️ /api/nova-ai:", {
-        q: question.slice(0, 100),
-        prefer: prefer || (CONFIG.USE_GEMINI_FIRST_BY_DEFAULT ? "gemini-first" : "openai-first")
-      });
+      console.log("🗨️ /api/nova-ai:", { q: question.slice(0, 60), prefer: CONFIG.USE_GEMINI_FIRST_BY_DEFAULT ? "gemini-first" : "openai-first" });
     }
 
-    const intent = analyzeIntent(question);
-    const useGeminiFirst =
-      prefer === "gemini-first" ? true
-      : prefer === "openai-first" ? false
-      : CONFIG.USE_GEMINI_FIRST_BY_DEFAULT;
-
-    let answer = null;
-    if (useGeminiFirst) {
-      answer = await callGemini(question, context, intent);
-      if (!answer) answer = await callOpenAI(question, context, intent);
-    } else {
-      answer = await callOpenAI(question, context, intent);
-      if (!answer) answer = await callGemini(question, context, intent);
-    }
+    const { provider, answer } = await askLLM(
+      question, context, intent, language, dialect, Array.isArray(history) ? history : []
+    );
 
     if (!answer) {
-      return res.json({ ok: false, error: "ai_failed", message: "تعذر توليد الإجابة حالياً." });
+      return res.json({ ok: false, error: "ai_failed", message: language === "en" ? "Failed to generate an answer at the moment." : "تعذر توليد الإجابة حالياً." });
     }
 
-    return res.json({ ok: true, intent, answer });
+    const cta = buildCTA(intent, language);
+
+    return res.json({
+      ok: true,
+      provider,
+      intent,
+      language,
+      dialect,
+      answer,
+      cta // {type, text, url}
+    });
   } catch (err) {
     console.error("Proxy error:", err);
-    return res.status(500).json({ ok: false, error: "server_error" });
+    res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
 // =======================================================
-// 📬 /api/feedback — GitHub + Reach (واحد أو كلاهما)
+// 📨 API: Feedback (GitHub + Reach) + Metrics bump
 // =======================================================
-async function upsertGithubFile({ owner, repo, path, line }) {
-  const api = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-
-  // 1) اجلب الملف لمعرفة sha إن وجد
-  let sha;
-  const getRes = await fetch(api, {
-    headers: { Authorization: `token ${GITHUB_TOKEN}`, "User-Agent": "NovaProxy" }
-  });
-  if (getRes.status === 200) {
-    const json = await getRes.json().catch(() => null);
-    sha = json?.sha;
-    const contentRaw = Buffer.from(json?.content || "", "base64").toString("utf8");
-    // أضف السطر الجديد
-    const newContent = contentRaw.endsWith("\n") ? contentRaw + line : contentRaw + "\n" + line;
-    const putRes = await fetch(api, {
-      method: "PUT",
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        "Content-Type": "application/json",
-        "User-Agent": "NovaProxy"
-      },
-      body: JSON.stringify({
-        message: "Append feedback row",
-        content: Buffer.from(newContent, "utf8").toString("base64"),
-        sha
-      })
-    });
-    if (!putRes.ok) throw new Error("GitHub PUT failed: " + (await putRes.text()));
-    return true;
-  }
-
-  if (getRes.status === 404) {
-    // 2) أنشئ ملف جديد مع الهيدر + السطر
-    const header = "timestamp,email,name,note\n";
-    const content = header + line + "\n";
-    const putRes = await fetch(api, {
-      method: "PUT",
-      headers: {
-        Authorization: `token ${GITHUB_TOKEN}`,
-        "Content-Type": "application/json",
-        "User-Agent": "NovaProxy"
-      },
-      body: JSON.stringify({
-        message: "Create feedback.csv",
-        content: Buffer.from(content, "utf8").toString("base64")
-      })
-    });
-    if (!putRes.ok) throw new Error("GitHub create failed: " + (await putRes.text()));
-    return true;
-  }
-
-  throw new Error("GitHub GET failed: " + getRes.status + " " + (await getRes.text()));
-}
-
 app.post("/api/feedback", async (req, res) => {
   try {
-    const { email, name, note } = req.body || {};
-    if (!email || typeof email !== "string" || !email.includes("@")) {
+    const { email, name, note, intent, dialect, language, lead_source, brand } = req.body || {};
+    if (!email || !email.includes("@")) {
       return res.status(400).json({ ok: false, error: "invalid_email" });
     }
 
-    const ts = new Date().toISOString();
-    const safe = (s) => (s || "").toString().replace(/[\n\r,]/g, " ").trim();
-    const row = `${ts},${safe(email)},${safe(name)},${safe(note)}`;
-
-    let ghOK = false, reachOK = false;
-
-    // 1) GitHub
+    // 1) GitHub CSV append (create if not exists)
     if (CONFIG.FEEDBACK.ENABLED && CONFIG.FEEDBACK.GITHUB.ENABLED && GITHUB_TOKEN) {
+      const { OWNER, REPO, FEEDBACK_FILE } = CONFIG.FEEDBACK.GITHUB;
+      let cur;
       try {
-        ghOK = await upsertGithubFile({
-          owner: CONFIG.FEEDBACK.GITHUB.OWNER,
-          repo:  CONFIG.FEEDBACK.GITHUB.REPO,
-          path:  CONFIG.FEEDBACK.GITHUB.FILE_PATH,
-          line:  row
-        });
+        cur = await ghGetFile(OWNER, REPO, FEEDBACK_FILE);
+      } catch (e) {
+        console.error("GitHub read error:", e.message);
+        return res.json({ ok: false, error: "feedback_failed" });
+      }
+
+      const row = [
+        new Date().toISOString(),
+        email,
+        (name || "").replace(/,/g, " "),
+        (note || "").replace(/,/g, " "),
+        (intent || "GENERAL"),
+        (dialect || ""),
+        (language || ""),
+        (lead_source || "NovaBot v4.8"),
+        (brand || CONFIG.BRAND_NAME)
+      ].join(",") + "\n";
+
+      const nextContent = cur.exists ? (cur.content + row) : ("timestamp,email,name,note,intent,dialect,language,lead_source,brand\n" + row);
+
+      try {
+        await ghPutFile(OWNER, REPO, FEEDBACK_FILE, nextContent, cur.sha, "add feedback row");
       } catch (e) {
         console.error("GitHub write error:", e.message);
+        return res.json({ ok: false, error: "feedback_failed" });
       }
+
+      // 2) Metrics bump (conversion per intent)
+      await bumpMetrics(intent || "GENERAL");
     }
 
-    // 2) Reach
-    if (CONFIG.FEEDBACK.ENABLED && CONFIG.FEEDBACK.REACH.ENABLED && CONFIG.FEEDBACK.REACH.API_KEY) {
+    // 3) Reach push (optional)
+    if (CONFIG.FEEDBACK.REACH.ENABLED && CONFIG.FEEDBACK.REACH.API_KEY) {
       try {
-        const r = await fetch(CONFIG.FEEDBACK.REACH.API_URL, {
+        await fetch(CONFIG.FEEDBACK.REACH.API_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${CONFIG.FEEDBACK.REACH.API_KEY}`
+            Authorization: `Bearer ${CONFIG.FEEDBACK.REACH.API_KEY}`
           },
-          body: JSON.stringify({ email, name, note })
+          body: JSON.stringify({
+            email,
+            name,
+            note: note || "subscription-from-chat",
+            tags: [intent || "GENERAL", "NovaBot", "Lead"],
+            metadata: { dialect, language, brand: brand || CONFIG.BRAND_NAME }
+          })
         });
-        reachOK = r.ok;
-        if (!r.ok) {
-          const t = await r.text().catch(() => "");
-          console.error("Reach HTTP:", r.status, t);
-        }
       } catch (e) {
-        console.error("Reach error:", e.message);
+        console.warn("Reach push failed:", e.message);
+        // نكمل دون فشل عام، طالما GitHub سجّل
       }
     }
 
-    if (ghOK || reachOK) {
-      return res.json({ ok: true, message: "تم حفظ البريد بنجاح." });
-    }
-    return res.json({ ok: false, error: "feedback_failed" });
+    return res.json({ ok: true, message: "تم حفظ البريد بنجاح." });
   } catch (err) {
     console.error("Feedback Error:", err);
-    return res.json({ ok: false, error: "feedback_failed" });
+    res.json({ ok: false, error: "feedback_failed" });
   }
 });
 
-// =======================================================
-// 🧩 Health & Version
-// =======================================================
-app.get("/", (_, res) => res.send("✅ NovaProxy v2.1 LTS is running."));
-app.get("/api/version", (_, res) => res.json({ ok: true, version: "2.1-lts" }));
+// اختبار مفاتيح Gemini سريع
+app.get("/api/test/gemini", async (_req, res) => {
+  if (!GEMINI_API_KEY) return res.json({ ok: false, message: "GEMINI_API_KEY missing" });
+  try {
+    const t = await callGemini("gemini-2.5-flash", "ping");
+    return res.json({ ok: true, provider: "gemini-2.5-flash", answer: (t || "").slice(0, 60) });
+  } catch {
+    try {
+      const t2 = await callGemini("gemini-1.5-flash", "ping");
+      return res.json({ ok: true, provider: "gemini-1.5-flash", answer: (t2 || "").slice(0, 60) });
+    } catch (e) {
+      return res.json({ ok: false, message: e.message || "Gemini failed" });
+    }
+  }
+});
+
+// Health
+app.get("/", (_req, res) => {
+  res.send("✅ NovaProxy v2.2 is running.");
+});
 
 // =======================================================
-// 🟢 START
+// 🟢 RUN
 // =======================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 NovaProxy v2.1 LTS listening on port ${PORT}`);
+  console.log(`🚀 NovaProxy v2.2 listening on port ${PORT}`);
 });
