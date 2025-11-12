@@ -55,6 +55,9 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 
+console.log("🔍 Gemini Key Status:", GEMINI_API_KEY ? "✅ Loaded" : "❌ Missing");
+console.log("🔍 OpenAI Key Status:", OPENAI_API_KEY ? "✅ Loaded" : "❌ Missing");
+
 // =======================================================
 // 🚀 إعداد السيرفر
 // =======================================================
