@@ -1,6 +1,7 @@
 {
   "name": "novabot-proxy",
   "version": "1.0.0",
+  "type": "commonjs",
   "description": "NovaBot Hybrid AI Proxy (Gemini + OpenAI) for NovaLink and clients",
   "main": "server.js",
   "scripts": {
