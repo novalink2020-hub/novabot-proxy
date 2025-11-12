@@ -141,6 +141,8 @@ async function callGemini(question, context, intent) {
   return parts.map(p => p.text || "").join(" ").trim() || null;
 }
 
+const data = await res.json();
+
 async function callOpenAI(question, context, intent) {
   if (!OPENAI_API_KEY) return null;
 
