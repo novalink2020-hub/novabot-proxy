@@ -55,9 +55,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || "";
 
-console.log("🔍 Gemini Key Status:", GEMINI_API_KEY ? "✅ Loaded" : "❌ Missing");
-console.log("🔍 OpenAI Key Status:", OPENAI_API_KEY ? "✅ Loaded" : "❌ Missing");
-
 // =======================================================
 // 🚀 إعداد السيرفر
 // =======================================================
@@ -140,8 +137,6 @@ async function callGemini(question, context, intent) {
   const parts = data?.candidates?.[0]?.content?.parts || [];
   return parts.map(p => p.text || "").join(" ").trim() || null;
 }
-
-const data = await res.json();
 
 async function callOpenAI(question, context, intent) {
   if (!OPENAI_API_KEY) return null;
