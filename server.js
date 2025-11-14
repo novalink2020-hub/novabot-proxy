@@ -261,19 +261,22 @@ ${isEN ? "Now answer clearly and practically." : "الآن قدّم إجابة �
 // =======================================================
 async function callGemini(model, prompt) {
   const url = "https://novalinksecuregeminiproxy.novalink2020.workers.dev";
-  const body = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
+  
+  const body = { question: prompt };
+
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
+
   if (!res.ok) {
     const errTxt = await res.text().catch(() => "");
     throw new Error(`Gemini HTTP ${res.status} ${errTxt}`);
   }
+
   const data = await res.json();
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const text = parts.map(p => (p.text || "").trim()).join(" ").trim();
+  const text = data?.answer || "";
   return text || null;
 }
 
