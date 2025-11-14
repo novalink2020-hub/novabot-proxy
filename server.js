@@ -260,7 +260,7 @@ ${isEN ? "Now answer clearly and practically." : "الآن قدّم إجابة �
 // 🤖 LLM Calls (Gemini with retry → OpenAI fallback)
 // =======================================================
 async function callGemini(model, prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  const url = "https://novalinksecuregeminiproxy.novalink2020.workers.dev";
   const body = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
   const res = await fetch(url, {
     method: "POST",
