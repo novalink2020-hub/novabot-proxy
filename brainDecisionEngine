@@ -1,150 +1,122 @@
 // =======================================================
 // brainDecisionEngine.js
-// Core Logic for NovaBrain v3.0
-// يصنع القرار النهائي: AI / Automated / Knowledge / Products / Human
-// مطوّر: محمد أبو سنينة – NOVALINK.AI
+// عقل اتخاذ القرار – AI أم Knowledge أم Fallback
 // =======================================================
 
-const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
-const { detectIntentDetailed, isAIDomainQuestion } = require("./brainIntentDetector.js");
-const { getFallbackReply } = require("./brainFallback.js");
+const fetch = require("node-fetch");
+const Fallback = require("./brainFallback");
+const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config");
 
-async function brainDecisionEngine(question, channel = "web", history = []) {
+async function callGemini(model, prompt) {
+  const KEY = process.env.GEMINI_API_KEY;
+  if (!KEY) throw new Error("Gemini key missing");
 
-  const brain = NOVA_BRAIN_V3;
-  const profile = brain.PROFILE;
-  const modes = brain.BUSINESS_MODES[profile.BUSINESS_TYPE]?.[channel] || {};
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${KEY}`;
 
-  // 1) كشف اللغة
-  const language = /[a-zA-Z]/.test(question) ? "en" : "ar";
+  const body = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      maxOutputTokens: NOVA_BRAIN_V3.AI_ENGINE.MAX_TOKENS,
+      temperature: NOVA_BRAIN_V3.AI_ENGINE.TEMPERATURE
+    }
+  };
 
-  // 2) اكتشاف بيئة العمل
-  const isBlog       = profile.BUSINESS_TYPE === "blog";
-  const isStore      = profile.BUSINESS_TYPE === "ecommerce";
-  const isService    = profile.BUSINESS_TYPE === "service";
+  const res = await fetch(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "Content-Type": "application/json" }
+  });
 
-  // 3) كشف النية والمجال
-  const intent = detectIntentDetailed(question, language);
-  const inAIDomain = isAIDomainQuestion(question, brain);
+  if (!res.ok) throw new Error("Gemini API error");
 
-  // 4) تحديد نوع الرد المناسب
-  const useAI = (() => {
-    if (!brain.AI_ENGINE.ENABLED) return false;
-    if (!inAIDomain && brain.AI_ENGINE.ONLY_AI_DOMAIN_USES_LLM) return false;
-    return true;
-  })();
+  const data = await res.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text || null;
+}
 
-  // 5) المؤشرات الأولية للرد
-  let responseType = "automated";
-  let responseSource = "none";
-  let selectedKnowledge = null;
-  let selectedProduct = null;
-  let needsHuman = false;
+// --------------------------------------------------------
+// القرار الرئيسي
+// --------------------------------------------------------
+async function decideReply({ question, intent, lang, dialect, domainAI, match, score, history, config }) {
 
-  // ---------------------------------------------------
-  // 6) في حال السؤال تعريفي عن نوفا لينك – الرد جاهز
-  // ---------------------------------------------------
-  if (intent === "ABOUT") {
+  // 1) تطابق قوي مع المقالات
+  if (match && score >= 0.65) {
     return {
-      type: "automated",
-      content: brain.RESPONSES.ABOUT_NOVALINK.WHO_WE_ARE,
-      provider: "built-in",
-      intent,
-      needsHuman: false
+      ok: true,
+      provider: "knowledge-strong",
+      answer:
+        `💬 يبدو أنك تبحث في موضوع ناقشناه:\n“${match.title}”\n\n` +
+        `<a href="${match.url}" target="_blank">اقرأ المقال</a>`
     };
   }
 
-  // ---------------------------------------------------
-  // 7) مقالات/معرفة (blog mode)
-  // ---------------------------------------------------
-  if (isBlog && modes.USE_KNOWLEDGE) {
-    selectedKnowledge = await pickBestKnowledgeMatch(question);
-    if (selectedKnowledge && selectedKnowledge.score >= 0.45) {
-      return {
-        type: "knowledge",
-        provider: "match",
-        content:
-          `💬 يبدو أن سؤالك يرتبط بهذا الموضوع:<br>` +
-          `“${selectedKnowledge.item.title}”<br>` +
-          `🔗 <a class="nova-link" target="_blank" href="${selectedKnowledge.item.url}">اقرأ المقال</a>`,
-        intent,
-        needsHuman: false
-      };
-    }
-  }
+  // 2) تطابق متوسط → جرّب AI أولاً
+  if (match && score >= 0.35 && config.AI_ENGINE.ENABLED) {
+    try {
+      const prompt = buildPrompt(question, match, intent, config);
+      const ans = await callGemini("gemini-2.0-flash", prompt);
 
-  // ---------------------------------------------------
-  // 8) منتجات (ecommerce)
-  // ---------------------------------------------------
-  if (isStore && modes.USE_PRODUCTS) {
-    selectedProduct = await pickBestProductMatch(question);
-    if (selectedProduct) {
-      if (intent === "PURCHASE" || intent === "LEARNING") {
+      if (ans) {
         return {
-          type: "product",
-          provider: "catalog",
-          product: selectedProduct,
-          content:
-            `🛒 قد يكون هذا المنتج مناسبًا لك:<br>` +
-            `<strong>${selectedProduct.title}</strong><br>` +
-            `السعر: ${selectedProduct.price} ${selectedProduct.currency}<br>` +
-            `🔗 <a class="nova-link" target="_blank" href="${selectedProduct.url}">عرض المنتج</a>`,
-          intent,
-          needsHuman: modes.REQUIRE_HUMAN_ON_PURCHASE
+          ok: true,
+          provider: "gemini-flash",
+          answer: ans +
+            `<br><br><a href="${match.url}" target="_blank">اقرأ المزيد</a>`
         };
       }
-    }
+    } catch (e) {}
   }
 
-  // ---------------------------------------------------
-  // 9) إذا أردنا استخدام AI Engine
-  // ---------------------------------------------------
-  if (useAI) {
-    return {
-      type: "ai",
-      provider: "llm",
-      intent,
-      context: selectedKnowledge,
-      history,
-      needsHuman: false
-    };
+  // 3) سؤال عن AI → أرسل للذكاء الاصطناعي
+  if (domainAI && config.AI_ENGINE.ENABLED) {
+    try {
+      const prompt = buildPrompt(question, null, intent, config);
+      const ans = await callGemini("gemini-2.0-flash", prompt);
+
+      if (ans) {
+        return { ok: true, provider: "gemini-flash", answer: ans };
+      }
+    } catch (e) {}
   }
 
-  // ---------------------------------------------------
-  // 10) fallback مؤتمت – آخر خط دفاع
-  // ---------------------------------------------------
-  const fallback = getFallbackReply(intent, brain);
-
+  // 4) fallback
   return {
-    type: "automated",
-    provider: "fallback",
-    content: fallback,
-    intent,
-    needsHuman: shouldEscalateToHuman(intent, profile.BUSINESS_TYPE, brain)
+    ok: true,
+    provider: "automated",
+    answer: Fallback.automatedReply(intent, lang)
   };
 }
 
-// =======================================================
-// خوارزمية تحدد هل يجب تحويل المستخدم لموظف
-// =======================================================
-function shouldEscalateToHuman(intent, businessType, brain) {
-  const rules = brain.HANDOFF;
-  if (!rules.ENABLED) return false;
+// بناء البرومبت
+function buildPrompt(question, context, intent, config) {
+  let ctx = "";
+  if (context) {
+    ctx = `
+استخدم هذا المحتوى من نوفا لينك إن كان مناسبًا:
+العنوان: ${context.title}
+الوصف: ${context.description}
+المقتطف: ${context.excerpt}
+    `;
+  }
 
-  const types = rules.BY_BUSINESS_TYPE[businessType];
-  if (!types) return false;
+  return `
+أنت مساعد ${config.META.BRAND_NAME}.
+أجب بوضوح وباختصار لا يتجاوز ${config.AI_ENGINE.MAX_TOKENS} توكن.
 
-  return types.TRIGGER_ON_INTENTS.includes(intent);
+السؤال:
+${question}
+
+${ctx}
+
+قدم جوابًا عمليًا ومباشرًا.
+  `;
 }
 
-// =======================================================
-async function pickBestKnowledgeMatch(q) {
-  return null; // placeholder – سيتم بناؤها في خطوة لاحقة
+async function testGemini(text) {
+  return callGemini("gemini-2.0-flash", text);
 }
 
-async function pickBestProductMatch(q) {
-  return null; // placeholder – سيتم بناؤها لاحقًا
-}
-
-// =======================================================
-module.exports = { brainDecisionEngine };
+module.exports = {
+  decideReply,
+  testGemini
+};
