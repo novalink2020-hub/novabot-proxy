@@ -1,395 +1,169 @@
 // =======================================================
 // brainKnowledgeEngine.js
-// NovaBrain v3.0 – Knowledge Engine
-// مسؤول عن تحميل معرفة نوفا لينك (JSON / ثابت) + إيجاد أفضل تطابق
-// المطوّر: محمد أبو سنينة – NOVALINK.AI
+// محرك المعرفة لنوفا بوت v3
 // =======================================================
 
 const fetch = require("node-fetch");
 
-/**
- * ملاحظة مهمة:
- * هذا الملف لا يعرف شيئًا عن Express أو Routes.
- * فقط يستقبل config، يحمّل المعرفة، ويقدّم دوال:
- *   - warmup()
- *   - getBestMatch(question, options)
- *   - getAllMatches(question, options)
- *
- * يتم استدعاؤه من server.js أو brainDecisionEngine.js
- */
+let knowledgeCache = {
+  loaded: false,
+  timestamp: 0,
+  data: []
+};
 
-/**
- * مثال متوقع لتكوين قسم الـ KNOWLEDGE في ملف الإعدادات الخارجي (nova-brain.v3.config.js):
- *
- * KNOWLEDGE: {
- *   ENABLED: true,
- *   DRIVE_JSON_URL: "https://drive.google.com/uc?export=download&id=XXXX",
- *   CACHE_TTL_MS: 12 * 60 * 60 * 1000,
- *   MIN_SCORE_STRONG: 0.65,
- *   MIN_SCORE_MEDIUM: 0.35,
- *   STATIC_ITEMS: [
- *     {
- *       title: "ما هو الذكاء الاصطناعي؟",
- *       url: "https://novalink-ai.com/...",
- *       description: "تعريف مبسط للذكاء الاصطناعي...",
- *       excerpt: "في هذه المقالة نشرح...",
- *       lang: "ar",
- *       type: "blog",         // "blog" | "store" | "service" | "page"
- *       tags: ["ai","intro"],
- *       source: "static"
- *     }
- *   ]
- * }
- */
-
-// ============= أدوات نصية عامة =============
-
-function normalizeText(str = "") {
-  return str
-    .toLowerCase()
-    .replace(/[.,!?؟،"“”()\-_:;«»/\\[\]{}]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function tokenize(text = "") {
-  const norm = normalizeText(text);
-  if (!norm) return new Set();
-  return new Set(
-    norm
-      .split(" ")
-      .filter((w) => w.length >= 3)
-  );
-}
-
-// كشف لغة بسيط (نفس المنطق في السيرفر)
-function detectLanguage(text = "") {
-  const enOnly = /^[\s0-9a-zA-Z.,;:!?'"()@#%&*+\-_/\\|[\]{}<>]+$/;
-  if (enOnly.test(text.trim())) return "en";
-  return "ar";
-}
-
-// توحيد العنصر
-function normalizeItem(raw) {
-  if (!raw) return null;
-
-  const item = {
-    title: (raw.title || "").toString().trim(),
-    url: (raw.url || "").toString().trim(),
-    description: (raw.description || "").toString().trim(),
-    excerpt: (raw.excerpt || "").toString().trim(),
-    lang: (raw.lang || "").trim().toLowerCase() || null, // "ar" | "en" | null
-    type: (raw.type || "").trim().toLowerCase() || "blog", // blog | store | service | page
-    tags: Array.isArray(raw.tags) ? raw.tags.map(String) : [],
-    source: raw.source || "unknown"
+// تنظيف عنصر المعرفة
+function normalizeItem(item) {
+  if (!item) return null;
+  return {
+    title: (item.title || "").trim(),
+    url: (item.url || "").trim(),
+    description: (item.description || "").trim(),
+    excerpt: (item.excerpt || "").trim()
   };
-
-  if (!item.title || !item.url) return null;
-  return item;
 }
 
-// حساب درجة التطابق بين السؤال وعنصر معرفة
-function scoreMatch(questionTokens, item) {
-  const combined =
-    (item.title || "") +
-    " " +
-    (item.description || "") +
-    " " +
-    (item.excerpt || "");
+// -------------------------------------------------------
+// تحميل JSON من Google Drive
+// -------------------------------------------------------
+async function loadDriveJSON(config) {
+  if (!config.KNOWLEDGE.DRIVE_JSON.URL) return [];
 
-  const itemTokens = tokenize(combined);
-  if (!itemTokens.size) return 0;
+  const res = await fetch(config.KNOWLEDGE.DRIVE_JSON.URL);
+  if (!res.ok) throw new Error("Drive JSON failed");
 
-  let common = 0;
-  questionTokens.forEach((t) => {
-    if (itemTokens.has(t)) common++;
-  });
+  const json = await res.json();
+  if (!Array.isArray(json)) return [];
 
-  const score = common / Math.max(3, questionTokens.size);
-  return score;
+  return json.map(normalizeItem).filter(x => x && x.title);
 }
 
-// ============= الكلاس الرئيسي: KnowledgeEngine =============
+// -------------------------------------------------------
+// تحميل sitemap ثم استخراج صفحات الموقع
+// -------------------------------------------------------
+async function loadSitemap(config) {
+  if (!config.KNOWLEDGE.SITEMAP.URL) return [];
 
-class KnowledgeEngine {
-  /**
-   * @param {Object} config – جزء KNOWLEDGE من الكونفيج العام
-   */
-  constructor(config = {}) {
-    this.enabled = !!config.ENABLED;
-    this.driveJsonUrl = config.DRIVE_JSON_URL || null;
-    this.cacheTtlMs =
-      typeof config.CACHE_TTL_MS === "number"
-        ? config.CACHE_TTL_MS
-        : 12 * 60 * 60 * 1000;
+  const xmlRes = await fetch(config.KNOWLEDGE.SITEMAP.URL);
+  if (!xmlRes.ok) return [];
 
-    this.minScoreStrong =
-      typeof config.MIN_SCORE_STRONG === "number"
-        ? config.MIN_SCORE_STRONG
-        : 0.65;
+  const xml = await xmlRes.text();
+  const urls = Array.from(xml.matchAll(/<loc>(.*?)<\/loc>/g)).map(m => m[1]);
 
-    this.minScoreMedium =
-      typeof config.MIN_SCORE_MEDIUM === "number"
-        ? config.MIN_SCORE_MEDIUM
-        : 0.35;
+  const results = [];
+  for (let url of urls) {
+    try {
+      const page = await fetch(url);
+      const html = await page.text();
 
-    this.staticItems = Array.isArray(config.STATIC_ITEMS)
-      ? config.STATIC_ITEMS.map((i) =>
-          normalizeItem({ ...i, source: i.source || "static" })
-        ).filter(Boolean)
-      : [];
+      const title = (html.match(/<title>(.*?)<\/title>/)?.[1] || "").trim();
+      const desc = (html.match(/<meta name="description" content="(.*?)"/)?.[1] || "").trim();
 
-    // الكاش في الذاكرة
-    this._knowledge = [];
-    this._lastLoadedAt = 0;
-    this._loadingPromise = null;
+      const firstP = (html.match(/<p[^>]*>(.*?)<\/p>/)?.[1] || "").trim();
+
+      results.push(
+        normalizeItem({
+          title,
+          url,
+          description: desc,
+          excerpt: firstP
+        })
+      );
+    } catch (e) {}
   }
 
-  isStale() {
-    if (!this._lastLoadedAt) return true;
-    const diff = Date.now() - this._lastLoadedAt;
-    return diff > this.cacheTtlMs;
-  }
-
-  /**
-   * تحميل المعرفة (Drive JSON + Static)
-   * يتم استدعاؤه من warmup() أو عند أول استعلام.
-   */
-  async _loadKnowledge() {
-    if (!this.enabled) {
-      this._knowledge = [...this.staticItems];
-      this._lastLoadedAt = Date.now();
-      return;
-    }
-
-    const merged = [];
-
-    // 1) مصدر ثابت
-    if (this.staticItems.length) {
-      merged.push(...this.staticItems);
-    }
-
-    // 2) Google Drive JSON (لو متوفر)
-    if (this.driveJsonUrl) {
-      try {
-        const res = await fetch(this.driveJsonUrl);
-        if (!res.ok) {
-          console.warn(
-            "[NovaBrain] Drive JSON HTTP error:",
-            res.status,
-            await res.text().catch(() => "")
-          );
-        } else {
-          const json = await res.json();
-          if (Array.isArray(json)) {
-            json.forEach((raw) => {
-              const item = normalizeItem({
-                ...raw,
-                source: raw.source || "drive"
-              });
-              if (item) merged.push(item);
-            });
-          } else {
-            console.warn(
-              "[NovaBrain] Drive JSON format not an array, ignored."
-            );
-          }
-        }
-      } catch (e) {
-        console.warn("[NovaBrain] Drive JSON fetch failed:", e.message);
-      }
-    }
-
-    // في حال لم نجد أي شيء، لا نفشل – فقط نترك القائمة فارغة
-    this._knowledge = merged;
-    this._lastLoadedAt = Date.now();
-
-    console.log(
-      `[NovaBrain] Knowledge loaded. Total items: ${this._knowledge.length}`
-    );
-  }
-
-  /**
-   * واجهة علنية لتسخين الكاش يدويًا (مثلاً عند بدء السيرفر)
-   */
-  async warmup() {
-    if (this._loadingPromise) return this._loadingPromise;
-
-    this._loadingPromise = this._loadKnowledge()
-      .catch((e) => {
-        console.error("[NovaBrain] warmup error:", e.message);
-      })
-      .finally(() => {
-        this._loadingPromise = null;
-      });
-
-    return this._loadingPromise;
-  }
-
-  /**
-   * التأكد من أن المعرفة جاهزة قبل أي استعلام
-   */
-  async ensureReady() {
-    if (!this.isStale() && this._knowledge.length) return;
-    return this.warmup();
-  }
-
-  /**
-   * الحصول على أفضل تطابق لسؤال ما
-   * @param {string} question
-   * @param {Object} options
-   *   - lang: "ar" | "en" | null (اختياري – لو لم يمرّر سيتم كشفه تلقائيًا)
-   *   - type: نوع المحتوى المفضل (blog | store | service | page | null)
-   *   - limit: عدد النتائج في getAllMatches
-   */
-  async getBestMatch(question, options = {}) {
-    await this.ensureReady();
-
-    const text = (question || "").trim();
-    if (!text || !this._knowledge.length) {
-      return {
-        score: 0,
-        item: null,
-        level: "none", // none | weak | medium | strong
-        matches: []
-      };
-    }
-
-    const detectedLang = detectLanguage(text);
-    const lang =
-      options.lang && ["ar", "en"].includes(options.lang)
-        ? options.lang
-        : detectedLang;
-
-    const prefType = options.type || null;
-    const limit = typeof options.limit === "number" ? options.limit : 5;
-
-    const qTokens = tokenize(text);
-    if (!qTokens.size) {
-      return {
-        score: 0,
-        item: null,
-        level: "none",
-        matches: []
-      };
-    }
-
-    const scored = [];
-
-    for (const item of this._knowledge) {
-      // فلترة باللغة – نعطي أولوية لمحتوى نفس اللغة
-      if (item.lang && lang && item.lang !== lang) {
-        // لا نستبعده 100%، لكن نقلل وزنه لاحقًا
-        // سنحسب score عادي ثم نخفضه قليلاً
-      }
-
-      // فلترة بالـ type لو تم طلب نوع معيّن
-      if (prefType && item.type && item.type !== prefType) {
-        // أيضًا لا نستبعد نهائيًا، فقط يمكننا تقليل الوزن لاحقًا لو أردنا
-        // الآن: نتركه يشارك عادي
-      }
-
-      const baseScore = scoreMatch(qTokens, item);
-      if (baseScore <= 0) continue;
-
-      let adjusted = baseScore;
-
-      // تقليل بسيط في حال اختلاف اللغة
-      if (item.lang && lang && item.lang !== lang) {
-        adjusted *= 0.75;
-      }
-
-      scored.push({
-        item,
-        score: adjusted
-      });
-    }
-
-    if (!scored.length) {
-      return {
-        score: 0,
-        item: null,
-        level: "none",
-        matches: []
-      };
-    }
-
-    // ترتيب تنازلي
-    scored.sort((a, b) => b.score - a.score);
-
-    const best = scored[0];
-
-    let level = "weak";
-    if (best.score >= this.minScoreStrong) {
-      level = "strong";
-    } else if (best.score >= this.minScoreMedium) {
-      level = "medium";
-    } else {
-      level = "weak";
-    }
-
-    return {
-      score: best.score,
-      item: best.item,
-      level,
-      matches: scored.slice(0, limit) // لأغراض تشخيصية/تحليلية
-    };
-  }
-
-  /**
-   * إرجاع قائمة مرتبة لأعلى التطابقات
-   * @param {string} question
-   * @param {Object} options
-   *   - lang
-   *   - type
-   *   - limit
-   */
-  async getAllMatches(question, options = {}) {
-    const res = await this.getBestMatch(question, options);
-    return res.matches || [];
-  }
-
-  /**
-   * بعض الإحصائيات البسيطة لاستخدامها في /health أو /debug
-   */
-  getStats() {
-    return {
-      enabled: this.enabled,
-      items: this._knowledge.length,
-      lastLoadedAt: this._lastLoadedAt,
-      cacheAgeMs: this._lastLoadedAt ? Date.now() - this._lastLoadedAt : null,
-      minScoreStrong: this.minScoreStrong,
-      minScoreMedium: this.minScoreMedium,
-      fromSources: this._knowledge.reduce(
-        (acc, item) => {
-          const src = item.source || "unknown";
-          acc[src] = (acc[src] || 0) + 1;
-          return acc;
-        },
-        {}
-      )
-    };
-  }
+  return results.filter(x => x && x.title);
 }
 
-// ============= التصدير =============
+// -------------------------------------------------------
+// Fallback مدمج
+// -------------------------------------------------------
+function loadEmbeddedFallback(config) {
+  const items = config.KNOWLEDGE.EMBEDDED_FALLBACK.ITEMS || [];
+  return items.map(normalizeItem).filter(x => x && x.title);
+}
 
-/**
- * دالة مريحة لإنشاء إنستانس جديدة من المحرك
- * تستدعيها في server.js مثلاً:
- *
- *   const { createKnowledgeEngine } = require("./brainKnowledgeEngine");
- *   const config = require("./nova-brain.v3.config");
- *   const knowledgeEngine = createKnowledgeEngine(config.KNOWLEDGE);
- *
- *   // اختيارياً: تسخين الكاش عند بداية التشغيل
- *   knowledgeEngine.warmup();
- */
-function createKnowledgeEngine(knowledgeConfig) {
-  return new KnowledgeEngine(knowledgeConfig || {});
+
+// -------------------------------------------------------
+// تحميل المعرفة كاملة
+// -------------------------------------------------------
+async function loadKnowledge(config) {
+  const ttl = config.KNOWLEDGE.CACHE.TTL_MS;
+
+  if (knowledgeCache.loaded && Date.now() - knowledgeCache.timestamp < ttl) {
+    return;
+  }
+
+  let collected = [];
+
+  // سلسلة الأولويات
+  for (const source of config.KNOWLEDGE.PRIORITY_CHAIN) {
+    try {
+      if (source === "drive-json" && config.KNOWLEDGE.DRIVE_JSON.ENABLED) {
+        const d = await loadDriveJSON(config);
+        collected = collected.concat(d);
+      }
+
+      if (source === "sitemap-scrape" && config.KNOWLEDGE.SITEMAP.ENABLED) {
+        const s = await loadSitemap(config);
+        collected = collected.concat(s);
+      }
+
+      if (source === "embedded-fallback" && config.KNOWLEDGE.EMBEDDED_FALLBACK.ENABLED) {
+        const e = loadEmbeddedFallback(config);
+        collected = collected.concat(e);
+      }
+
+    } catch (e) {
+      console.warn("⚠ Knowledge source failed:", e.message);
+    }
+  }
+
+  knowledgeCache = {
+    loaded: true,
+    timestamp: Date.now(),
+    data: collected
+  };
+}
+
+// -------------------------------------------------------
+// أفضل تطابق
+// -------------------------------------------------------
+function findBestMatch(question) {
+  if (!knowledgeCache.data.length) {
+    return { match: null, score: 0 };
+  }
+
+  const q = question.toLowerCase();
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const item of knowledgeCache.data) {
+    const hay = `${item.title} ${item.description} ${item.excerpt}`.toLowerCase();
+
+    let score = 0;
+    q.split(" ").forEach((word) => {
+      if (word.length >= 3 && hay.includes(word)) score++;
+    });
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+
+  return {
+    match: best,
+    score: bestScore / Math.max(3, question.split(" ").length)
+  };
+}
+
+function getCount() {
+  return knowledgeCache.data.length;
 }
 
 module.exports = {
-  KnowledgeEngine,
-  createKnowledgeEngine
+  loadKnowledge,
+  findBestMatch,
+  getCount
 };
