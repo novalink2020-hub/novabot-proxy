@@ -1,19 +1,16 @@
 {
-  "name": "novabot-proxy",
+  "name": "novabot-v3-brain",
   "version": "1.0.0",
-  "description": "NovaProxy v2.2 — Smart Behavior & Tone Adaptive Edition",
-  "main": "server.js",
-  "type": "commonjs",
+  "description": "NovaBot v3 – Brain & Proxy Server for NOVALINK.AI",
+  "main": "server-v3.js",
   "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18 <23"
+    "start": "node server-v3.js"
   },
   "dependencies": {
+    "express": "^4.19.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "node-fetch": "^2.7.0"
+    "body-parser": "^1.20.2",
+    "@google/generative-ai": "^1.0.0",
+    "node-fetch": "^3.3.2"
   }
 }
