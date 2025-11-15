@@ -1,18 +1,148 @@
-const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
+// =======================================================
+// NovaBot v3.0 – Production Server
+// Unified Brain + AI + Knowledge + Fallback
+// المطوّر: محمد أبو سنينة – NOVALINK.AI
+// =======================================================
 
-// داخل /api/nova-ai مثلاً:
+// -----------------------------------------
+// 1) Load environment variables
+// -----------------------------------------
+require("dotenv").config();
+
+// -----------------------------------------
+// 2) Basic dependencies
+// -----------------------------------------
+const express = require("express");
+const cors = require("cors");
+
+// -----------------------------------------
+// 3) Load Unified Brain Config
+// -----------------------------------------
+const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config");
+
+// -----------------------------------------
+// 4) Load Brain Modules
+// -----------------------------------------
+const Intent        = require("./brainIntentDetector");
+const Knowledge     = require("./brainKnowledgeEngine");
+const Decision      = require("./brainDecisionEngine");
+const Fallback      = require("./brainFallback");
+const Channels      = require("./brainChannelAdapter");
+
+// -----------------------------------------
+// 5) Express App
+// -----------------------------------------
+const app = express();
+app.use(express.json({ limit: "1mb" }));
+
+// -----------------------------------------
+// 6) CORS Based on Web Channel Settings
+// -----------------------------------------
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      const allowed = NOVA_BRAIN_V3.CHANNELS?.WEB?.ALLOWED_ORIGINS || [];
+      if (allowed.includes(origin)) return cb(null, true);
+      return cb(new Error("❌ CORS: Origin not allowed"), false);
+    },
+  })
+);
+
+// =======================================================
+// 🔥 MAIN API – Brain-driven AI Engine
+// =======================================================
 app.post("/api/nova-ai", async (req, res) => {
-  const { question, channel, history } = req.body || {};
+  try {
+    const question = req.body.question || "";
+    const history  = req.body.history || [];
+    const channel  = req.body.channel || "web";
 
-  // 1) تقرأ الإعدادات:
-  const profile = NOVA_BRAIN_V3.PROFILE;
-  const modes   = NOVA_BRAIN_V3.BUSINESS_MODES[profile.BUSINESS_TYPE]?.[channel || NOVA_BRAIN_V3.META.DEFAULT_CHANNEL];
+    if (!question.trim()) {
+      return res.json(Fallback.automatedReply("GENERAL", "ar"));
+    }
 
-  // 2) تستخدم DOMAIN_KEYWORDS و INTENTS لاكتشاف النية والمجال
-  // 3) تقرر:
-  //   - هل تستخدم AI_ENGINE أم فقط RESPONSES المؤتمتة؟
-  //   - هل تستدعي knowledge (مقالات أو منتجات)؟
-  //   - هل تفعّل handoff (تحويل لموظف)؟
-  //   - هل تظهر CTA اشتراك بالبريد أم لا؟
-  // هذا سنبنيه في خطوة لاحقة داخل دالة brainDecisionEngine.
+    // ---------------------------------------------------
+    // 1) Classify language + dialect + intent + domain
+    // ---------------------------------------------------
+    const lang    = Intent.detectLanguage(question);
+    const dialect = lang === "ar" ? Intent.detectDialect(question) : "n/a";
+    const intent  = Intent.detectIntent(question);
+    const domainAI = Intent.isAIDomain(question);
+
+    // ---------------------------------------------------
+    // 2) Load Knowledge (if needed)
+    // ---------------------------------------------------
+    await Knowledge.loadKnowledge(NOVA_BRAIN_V3);
+
+    const { match, score } = Knowledge.findBestMatch(question);
+
+    // ---------------------------------------------------
+    // 3) Decision Engine – The “Brain” of NovaBot
+    // ---------------------------------------------------
+    const answer = await Decision.decideReply({
+      question,
+      intent,
+      lang,
+      dialect,
+      domainAI,
+      match,
+      score,
+      history,
+      config: NOVA_BRAIN_V3,
+    });
+
+    // ---------------------------------------------------
+    // 4) Channel Adapter (Web / WhatsApp / etc.)
+    // ---------------------------------------------------
+    const finalFormatted = Channels.adaptMessageToChannel(answer, channel);
+
+    return res.json(finalFormatted);
+
+  } catch (err) {
+    console.error("🔥 SERVER ERROR:", err.message);
+
+    return res.json({
+      ok: true,
+      provider: "hard-fallback",
+      answer: Fallback.automatedReply("GENERAL", "ar"),
+    });
+  }
 });
+
+// =======================================================
+// TEST ROUTES
+// =======================================================
+
+// Health check
+app.get("/", (_req, res) => {
+  res.send("🔥 NovaBot v3.0 – Unified Brain Online");
+});
+
+// Ping knowledge
+app.get("/api/test/knowledge", async (_req, res) => {
+  try {
+    await Knowledge.loadKnowledge(NOVA_BRAIN_V3);
+    res.json({ ok: true, total: Knowledge.getCount() });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// Ping AI provider (Gemini)
+app.get("/api/test/gemini", async (_req, res) => {
+  try {
+    const result = await Decision.testGemini("ping-test");
+    res.json({ ok: true, result });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+// =======================================================
+// SERVER
+// =======================================================
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () =>
+  console.log(`🚀 NovaBot v3 server running on port ${PORT}`)
+);
