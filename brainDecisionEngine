@@ -1,0 +1,150 @@
+// =======================================================
+// brainDecisionEngine.js
+// Core Logic for NovaBrain v3.0
+// يصنع القرار النهائي: AI / Automated / Knowledge / Products / Human
+// مطوّر: محمد أبو سنينة – NOVALINK.AI
+// =======================================================
+
+const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
+const { detectIntentDetailed, isAIDomainQuestion } = require("./brainIntentDetector.js");
+const { getFallbackReply } = require("./brainFallback.js");
+
+async function brainDecisionEngine(question, channel = "web", history = []) {
+
+  const brain = NOVA_BRAIN_V3;
+  const profile = brain.PROFILE;
+  const modes = brain.BUSINESS_MODES[profile.BUSINESS_TYPE]?.[channel] || {};
+
+  // 1) كشف اللغة
+  const language = /[a-zA-Z]/.test(question) ? "en" : "ar";
+
+  // 2) اكتشاف بيئة العمل
+  const isBlog       = profile.BUSINESS_TYPE === "blog";
+  const isStore      = profile.BUSINESS_TYPE === "ecommerce";
+  const isService    = profile.BUSINESS_TYPE === "service";
+
+  // 3) كشف النية والمجال
+  const intent = detectIntentDetailed(question, language);
+  const inAIDomain = isAIDomainQuestion(question, brain);
+
+  // 4) تحديد نوع الرد المناسب
+  const useAI = (() => {
+    if (!brain.AI_ENGINE.ENABLED) return false;
+    if (!inAIDomain && brain.AI_ENGINE.ONLY_AI_DOMAIN_USES_LLM) return false;
+    return true;
+  })();
+
+  // 5) المؤشرات الأولية للرد
+  let responseType = "automated";
+  let responseSource = "none";
+  let selectedKnowledge = null;
+  let selectedProduct = null;
+  let needsHuman = false;
+
+  // ---------------------------------------------------
+  // 6) في حال السؤال تعريفي عن نوفا لينك – الرد جاهز
+  // ---------------------------------------------------
+  if (intent === "ABOUT") {
+    return {
+      type: "automated",
+      content: brain.RESPONSES.ABOUT_NOVALINK.WHO_WE_ARE,
+      provider: "built-in",
+      intent,
+      needsHuman: false
+    };
+  }
+
+  // ---------------------------------------------------
+  // 7) مقالات/معرفة (blog mode)
+  // ---------------------------------------------------
+  if (isBlog && modes.USE_KNOWLEDGE) {
+    selectedKnowledge = await pickBestKnowledgeMatch(question);
+    if (selectedKnowledge && selectedKnowledge.score >= 0.45) {
+      return {
+        type: "knowledge",
+        provider: "match",
+        content:
+          `💬 يبدو أن سؤالك يرتبط بهذا الموضوع:<br>` +
+          `“${selectedKnowledge.item.title}”<br>` +
+          `🔗 <a class="nova-link" target="_blank" href="${selectedKnowledge.item.url}">اقرأ المقال</a>`,
+        intent,
+        needsHuman: false
+      };
+    }
+  }
+
+  // ---------------------------------------------------
+  // 8) منتجات (ecommerce)
+  // ---------------------------------------------------
+  if (isStore && modes.USE_PRODUCTS) {
+    selectedProduct = await pickBestProductMatch(question);
+    if (selectedProduct) {
+      if (intent === "PURCHASE" || intent === "LEARNING") {
+        return {
+          type: "product",
+          provider: "catalog",
+          product: selectedProduct,
+          content:
+            `🛒 قد يكون هذا المنتج مناسبًا لك:<br>` +
+            `<strong>${selectedProduct.title}</strong><br>` +
+            `السعر: ${selectedProduct.price} ${selectedProduct.currency}<br>` +
+            `🔗 <a class="nova-link" target="_blank" href="${selectedProduct.url}">عرض المنتج</a>`,
+          intent,
+          needsHuman: modes.REQUIRE_HUMAN_ON_PURCHASE
+        };
+      }
+    }
+  }
+
+  // ---------------------------------------------------
+  // 9) إذا أردنا استخدام AI Engine
+  // ---------------------------------------------------
+  if (useAI) {
+    return {
+      type: "ai",
+      provider: "llm",
+      intent,
+      context: selectedKnowledge,
+      history,
+      needsHuman: false
+    };
+  }
+
+  // ---------------------------------------------------
+  // 10) fallback مؤتمت – آخر خط دفاع
+  // ---------------------------------------------------
+  const fallback = getFallbackReply(intent, brain);
+
+  return {
+    type: "automated",
+    provider: "fallback",
+    content: fallback,
+    intent,
+    needsHuman: shouldEscalateToHuman(intent, profile.BUSINESS_TYPE, brain)
+  };
+}
+
+// =======================================================
+// خوارزمية تحدد هل يجب تحويل المستخدم لموظف
+// =======================================================
+function shouldEscalateToHuman(intent, businessType, brain) {
+  const rules = brain.HANDOFF;
+  if (!rules.ENABLED) return false;
+
+  const types = rules.BY_BUSINESS_TYPE[businessType];
+  if (!types) return false;
+
+  return types.TRIGGER_ON_INTENTS.includes(intent);
+}
+
+// =======================================================
+async function pickBestKnowledgeMatch(q) {
+  return null; // placeholder – سيتم بناؤها في خطوة لاحقة
+}
+
+async function pickBestProductMatch(q) {
+  return null; // placeholder – سيتم بناؤها لاحقًا
+}
+
+// =======================================================
+module.exports = { brainDecisionEngine };
