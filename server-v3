@@ -1,0 +1,18 @@
+const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
+
+// داخل /api/nova-ai مثلاً:
+app.post("/api/nova-ai", async (req, res) => {
+  const { question, channel, history } = req.body || {};
+
+  // 1) تقرأ الإعدادات:
+  const profile = NOVA_BRAIN_V3.PROFILE;
+  const modes   = NOVA_BRAIN_V3.BUSINESS_MODES[profile.BUSINESS_TYPE]?.[channel || NOVA_BRAIN_V3.META.DEFAULT_CHANNEL];
+
+  // 2) تستخدم DOMAIN_KEYWORDS و INTENTS لاكتشاف النية والمجال
+  // 3) تقرر:
+  //   - هل تستخدم AI_ENGINE أم فقط RESPONSES المؤتمتة؟
+  //   - هل تستدعي knowledge (مقالات أو منتجات)؟
+  //   - هل تفعّل handoff (تحويل لموظف)؟
+  //   - هل تظهر CTA اشتراك بالبريد أم لا؟
+  // هذا سنبنيه في خطوة لاحقة داخل دالة brainDecisionEngine.
+});
