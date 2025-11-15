@@ -1,38 +1,58 @@
 // =======================================================
 // brainIntentDetector.js
-// تحليل النوايا اعتماداً على NOVA_BRAIN_V3
+// كاشف اللغة + اللهجة + النية + AI domain
 // =======================================================
 
-const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
+function detectLanguage(text = "") {
+  const enOnly = /^[0-9a-zA-Z\s.,;:!?'"()@#%&*\-_/\\]+$/;
+  return enOnly.test(text) ? "en" : "ar";
+}
 
-function detectIntentDetailed(question, lang = "ar") {
-  const brain = NOVA_BRAIN_V3;
-  const intents = brain.INTENTS;
+function detectDialect(text = "") {
+  const t = text.toLowerCase();
 
-  const q = question.toLowerCase();
+  const gulf = ["وش","ليه","هاالشي","مره","واجد","شلون","يعطيك"];
+  const egy  = ["ازاي","كده","ليه","عايز","دلوقتي","جامد"];
+  const lev  = ["ليش","شو","هيك","كتير","لسا","هلق"];
+  const magh = ["بزاف","علاش","ديما","برشا","تصاور"];
 
-  for (const intentKey in intents) {
-    const dataset = intents[intentKey][lang === "en" ? "EN" : "AR"] || [];
-    if (dataset.some(w => q.includes(w.toLowerCase()))) {
-      return intentKey;
-    }
+  const has = arr => arr.some(w => t.includes(w));
+
+  if (has(gulf)) return "gulf";
+  if (has(egy)) return "egyptian";
+  if (has(lev)) return "levant";
+  if (has(magh)) return "maghrebi";
+  return "msa";
+}
+
+function detectIntent(text = "") {
+  const t = text.toLowerCase();
+
+  const map = require("./nova-brain.v3.config").NOVA_BRAIN_V3.INTENTS;
+
+  for (const intent in map) {
+    const wordsAR = map[intent].AR || [];
+    const wordsEN = map[intent].EN || [];
+
+    if (wordsAR.some(w => t.includes(w.toLowerCase()))) return intent;
+    if (wordsEN.some(w => t.includes(w.toLowerCase()))) return intent;
   }
-
   return "GENERAL";
 }
 
-function isAIDomainQuestion(question, brain) {
-  const q = question.toLowerCase();
+function isAIDomain(text = "") {
+  const t = text.toLowerCase();
+  const cfg = require("./nova-brain.v3.config").NOVA_BRAIN_V3.DOMAIN_KEYWORDS;
 
-  const ar = brain.DOMAIN_KEYWORDS.AI_AR;
-  const en = brain.DOMAIN_KEYWORDS.AI_EN;
-
-  const hit = arr => arr.some(w => q.includes(w.toLowerCase()));
-
-  return hit(ar) || hit(en);
+  return (
+    cfg.AI_AR.some(w => t.includes(w.toLowerCase())) ||
+    cfg.AI_EN.some(w => t.includes(w.toLowerCase()))
+  );
 }
 
 module.exports = {
-  detectIntentDetailed,
-  isAIDomainQuestion
+  detectLanguage,
+  detectDialect,
+  detectIntent,
+  isAIDomain
 };
