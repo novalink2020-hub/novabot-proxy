@@ -1,0 +1,22 @@
+// =======================================================
+// brainFallback.js
+// الردود المؤتمتة + سيناريوهات الفشل
+// =======================================================
+
+const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
+
+function getFallbackReply(intent, brain = NOVA_BRAIN_V3) {
+  const R = brain.RESPONSES;
+
+  if (intent === "LEARNING") return R.GENERIC[2];
+  if (intent === "PURCHASE") return R.GENERIC[4];
+  if (intent === "ABOUT") return R.ABOUT_NOVALINK.WHO_WE_ARE;
+  if (intent === "MARKETING") return R.GENERIC[3];
+  if (intent === "COLLABORATION") return R.GENERIC[1];
+
+  return R.NO_MATCH;
+}
+
+module.exports = {
+  getFallbackReply
+};
