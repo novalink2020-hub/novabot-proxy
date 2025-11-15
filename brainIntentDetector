@@ -1,0 +1,38 @@
+// =======================================================
+// brainIntentDetector.js
+// تحليل النوايا اعتماداً على NOVA_BRAIN_V3
+// =======================================================
+
+const { NOVA_BRAIN_V3 } = require("./nova-brain.v3.config.js");
+
+function detectIntentDetailed(question, lang = "ar") {
+  const brain = NOVA_BRAIN_V3;
+  const intents = brain.INTENTS;
+
+  const q = question.toLowerCase();
+
+  for (const intentKey in intents) {
+    const dataset = intents[intentKey][lang === "en" ? "EN" : "AR"] || [];
+    if (dataset.some(w => q.includes(w.toLowerCase()))) {
+      return intentKey;
+    }
+  }
+
+  return "GENERAL";
+}
+
+function isAIDomainQuestion(question, brain) {
+  const q = question.toLowerCase();
+
+  const ar = brain.DOMAIN_KEYWORDS.AI_AR;
+  const en = brain.DOMAIN_KEYWORDS.AI_EN;
+
+  const hit = arr => arr.some(w => q.includes(w.toLowerCase()));
+
+  return hit(ar) || hit(en);
+}
+
+module.exports = {
+  detectIntentDetailed,
+  isAIDomainQuestion
+};
