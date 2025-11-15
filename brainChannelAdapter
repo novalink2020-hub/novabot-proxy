@@ -1,0 +1,170 @@
+// =======================================================
+// NovaBrain v3.0 – Unified Channel Adapter
+// يحوّل رسائل أي منصة إلى صيغة موحّدة لدماغ نوفا بوت
+// المطور: محمد أبو سنينة – NOVALINK.AI
+// =======================================================
+
+const { processMessage } = require("./brainDecisionEngine");
+
+// -------------------------------------------------------
+// 🔥 1) توحيد الرسالة الواردة من أي منصة
+// -------------------------------------------------------
+
+function normalizeIncomingMessage(channel, rawPayload) {
+  try {
+    switch (channel) {
+      case "web":
+        return {
+          senderId: rawPayload?.sessionId || "web-user",
+          message: rawPayload?.text || "",
+          channel,
+          metadata: {}
+        };
+
+      case "whatsapp":
+        return {
+          senderId: rawPayload?.from || "",
+          message: rawPayload?.text?.body || "",
+          channel,
+          metadata: rawPayload
+        };
+
+      case "messenger":
+        return {
+          senderId: rawPayload?.sender?.id,
+          message: rawPayload?.message?.text || "",
+          channel,
+          metadata: rawPayload
+        };
+
+      case "instagram":
+        return {
+          senderId: rawPayload?.sender?.id || "",
+          message: rawPayload?.message?.text || "",
+          channel,
+          metadata: rawPayload
+        };
+
+      case "telegram":
+        return {
+          senderId: rawPayload?.message?.from?.id || "",
+          message: rawPayload?.message?.text || "",
+          channel,
+          metadata: rawPayload
+        };
+
+      case "x":
+        return {
+          senderId: rawPayload?.sender_id || "",
+          message: rawPayload?.text || "",
+          channel,
+          metadata: rawPayload
+        };
+
+      default:
+        return {
+          senderId: "unknown",
+          message: "",
+          channel: "unknown",
+          metadata: rawPayload
+        };
+    }
+  } catch (e) {
+    console.error("❌ normalizeIncomingMessage error:", e);
+    return {
+      senderId: "unknown",
+      message: "",
+      channel: "unknown",
+      metadata: rawPayload
+    };
+  }
+}
+
+// -------------------------------------------------------
+// 🔥 2) توحيد الرد للصيغة المناسبة لكل منصة
+// -------------------------------------------------------
+
+function formatOutgoingMessage(channel, text) {
+  switch (channel) {
+    case "web":
+      return { reply: text };
+
+    case "whatsapp":
+      return {
+        type: "whatsapp",
+        body: {
+          messaging_product: "whatsapp",
+          text: { body: text }
+        }
+      };
+
+    case "messenger":
+      return {
+        type: "messenger",
+        body: {
+          text
+        }
+      };
+
+    case "instagram":
+      return {
+        type: "instagram",
+        body: {
+          text
+        }
+      };
+
+    case "telegram":
+      return {
+        type: "telegram",
+        body: {
+          method: "sendMessage",
+          text
+        }
+      };
+
+    case "x":
+      return {
+        type: "x",
+        body: {
+          text
+        }
+      };
+
+    default:
+      return { reply: text };
+  }
+}
+
+// -------------------------------------------------------
+// 🔥 3) نقطة الدخول: تُستدعى من السيرفر
+// -------------------------------------------------------
+
+async function handleIncomingMessage(channel, rawPayload) {
+  try {
+    const normalized = normalizeIncomingMessage(channel, rawPayload);
+
+    if (!normalized.message) {
+      return formatOutgoingMessage(channel, "أحتاج إلى رسالة لأتمكن من مساعدتك 🤖");
+    }
+
+    // 🧠 أرسل للدماغ
+    const brainResponse = await processMessage({
+      text: normalized.message,
+      userId: normalized.senderId,
+      channel: normalized.channel,
+      metadata: normalized.metadata
+    });
+
+    // أرجع صيغة مناسبة للقناة
+    return formatOutgoingMessage(channel, brainResponse);
+  } catch (e) {
+    console.error("❌ handleIncomingMessage error:", e);
+    return formatOutgoingMessage(channel, "⚠️ حدث خطأ غير متوقع، أعد المحاولة.");
+  }
+}
+
+// -------------------------------------------------------
+module.exports = {
+  handleIncomingMessage
+};
