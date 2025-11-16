@@ -470,19 +470,21 @@ const NOVA_BRAIN_V3 = {
   // ---------------------------------------------------
   // 12) إعدادات الفولباك للشبكات (Render / Cloudflare)
   // ---------------------------------------------------
-  NETWORK: {
-    PROXIES: {
-      // ✅ Proxy الأساسي على Render
-      PRIMARY: "https://novabot-proxy.onrender.com",
-
-      // ✅ قائمة فولباك – أولها Cloudflare Worker
-      FAILOVERS: [
-        "https://novalinksecuregeminiproxy.novalink2020.workers.dev"
-      ]
-    },
-
-    TIMEOUT_MS: 9000
-  }
+NETWORK: {
+  ALLOWED_ORIGINS: [
+    "https://novalink-ai.com",
+    "https://www.novalink-ai.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:5500"
+  ],
+  PROXIES: {
+    // Proxy الأساسي على Render
+    PRIMARY: "https://novabot-proxy.onrender.com/api/nova-ai",
+    // يمكن إضافة بروكسيات أخرى لاحقًا
+    FALLBACK_WORKER: "https://novalinksecuregeminiproxy.novalink2020.workers.dev/api/nova-ai"
+  },
+  TIMEOUT_MS: 9000
+}
 };
 
 module.exports = { NOVA_BRAIN_V3 };
