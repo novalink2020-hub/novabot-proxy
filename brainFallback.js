@@ -13,15 +13,27 @@ function automatedReply(intent = "GENERAL", lang = "ar") {
   if (intent === "NEGATIVE") return R.NEGATIVE[0];
 
   switch (intent) {
-    case "LEARNING": return R.GENERIC[2];
-    case "PURCHASE": return R.GENERIC[4];
-    case "MARKETING": return R.GENERIC[1];
-    case "COLLABORATION": return R.GENERIC[0];
-    case "ABOUT": return R.ABOUT_NOVALINK.WHO_WE_ARE;
-    default: return R.GENERIC[0];
+    case "LEARNING":
+      return R.GENERIC[2];
+    case "PURCHASE":
+      return R.GENERIC[4];
+    case "MARKETING":
+      return R.GENERIC[1];
+    case "COLLABORATION":
+      return R.GENERIC[0];
+    case "ABOUT":
+      return R.ABOUT_NOVALINK.WHO_WE_ARE;
+    default:
+      return R.GENERIC[0];
   }
 }
 
+// alias متوافق مع ما يستدعيه السيرفر
+function automatedFallbackReply(intent = "GENERAL", lang = "ar") {
+  return automatedReply(intent, lang);
+}
+
 module.exports = {
-  automatedReply
+  automatedReply,
+  automatedFallbackReply
 };
