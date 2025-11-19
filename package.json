@@ -1,0 +1,17 @@
+{
+  "name": "nova-bot-novalink",
+  "version": "1.0.0",
+  "description": "NovaBot Brain — NovaLink AI Edition",
+  "main": "server-novalink.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server-novalink.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "node-fetch": "^2.6.9",
+    "nodemailer": "^6.9.8"
+  }
+}
