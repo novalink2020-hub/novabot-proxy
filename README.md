@@ -1,55 +1,13 @@
-# 🚀 NovaProxy v2.0 — Smart Marketing Edition  
-### Hybrid AI Proxy (Gemini → OpenAI) + Leads & Feedback System  
-**Developed by [Mohammed Abu Snaina](https://novalink-ai.com) – NOVALINK.AI**
+# NovaBot — NovaLink AI Brain
 
----
+This is the custom AI brain powering the NovaBot chat assistant on **NovaLink AI**.
 
-## 🧠 ما هو NovaProxy؟
+## Features
+- Intent detection (Arabic + English)
+- AI failover: **Gemini → Cloudflare AI → Fallback**
+- Knowledge engine based on NovaLink blog articles (JSON + Sitemap)
+- Automated fallback replies (from NovaBot v4.8)
+- Lead capturing (GitHub + Email notifications)
+- Safe, lightweight, production-ready
 
-NovaProxy هو خادم **ذكاء اصطناعي هجين** (Hybrid AI Server)  
-صُمم لربط بوتات الدردشة مثل **NovaBot v4.8** بواجهات Gemini وOpenAI  
-مع طبقة ذكية للتحليل التسويقي، وتخزين الإيميلات والفيدباك  
-من داخل المحادثات تلقائيًا (GitHub + Hostinger Reach).
-
----
-
-## ⚙️ المزايا الرئيسية
-
-| الميزة | الوصف |
-|--------|--------|
-| 🤖 **تكامل Gemini + OpenAI** | يعمل بتسلسل ذكي: Gemini أولًا ثم OpenAI احتياطيًا. |
-| 💬 **تحليل نية المستخدم (Intent Detection)** | يكتشف تلقائيًا ما إذا كانت الرسالة تخص شراء، تعلم، أو تعاون. |
-| 🧭 **Smart Marketing Mode** | يكيّف الأسلوب بين التوعوي والبيعي وفق سياق المستخدم. |
-| 🧾 **Feedback Collector** | يجمع إيميلات وبيانات العملاء المحتملين تلقائيًا. |
-| 📨 **Reach Integration** | يرسل الإيميلات مباشرة إلى Hostinger Reach (للتسويق الآلي). |
-| 🧩 **GitHub Storage** | يحتفظ بنسخة احتياطية من الفيدباك داخل ملف `feedback.csv` في المستودع. |
-| 🌐 **CORS Protection** | يسمح فقط للدومينات المعتمدة مثل `novalink-ai.com`. |
-| 🧰 **قابل للتخصيص بالكامل** | جميع الإعدادات من خلال كائن `CONFIG` أعلى الكود. |
-
----
-
-## 🧩 الملفات الأساسية
-
-| الملف | الوظيفة |
-|--------|----------|
-| `server.js` | الكود الأساسي للسيرفر، يحتوي على الذكاء الهجين والتخزين المزدوج. |
-| `.env.example` | ملف البيئة النموذجي الذي يوضح المفاتيح المطلوبة للتشغيل. |
-| `feedback.csv` | الملف الذي تُحفظ به عناوين البريد المجمعة تلقائيًا في GitHub. |
-
----
-
-## ⚙️ متطلبات التشغيل
-
-- Node.js ≥ 18  
-- حساب GitHub (مع **Fine-grained token**)  
-- حساب Hostinger Reach (اختياري)  
-- حساب Google AI Studio أو OpenAI API Key  
-
----
-
-## 🚀 خطوات التشغيل السريع (Quick Start)
-
-1. **استنساخ المستودع:**
-   ```bash
-   git clone https://github.com/novalink2020-hub/novabot-proxy.git
-   cd novabot-proxy
+## Server Endpoint
