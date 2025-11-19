@@ -60,7 +60,7 @@ function trimHistory(history = []) {
 }
 
 // ==============================
-// KNOWLEDGE REPLY
+// KNOWLEDGE REPLY (HTML-FRIENDLY)
 // ==============================
 function buildKnowledgeReply(article, language = "ar") {
   if (!article) return null;
@@ -72,26 +72,28 @@ function buildKnowledgeReply(article, language = "ar") {
 
   if (language === "en") {
     return `
-Here is a related article from NovaLink AI:
+🔗 A related article from NovaLink AI:
 
-**${title}**
-${desc ? desc + "\n\n" : ""}
+<strong>${title}</strong>
+${desc ? "\n" + desc : ""}
+
+${snippet ? "\nExcerpt:\n" + snippet + "..." : ""}
 
 Read more:
-${url}
+<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>
     `.trim();
   }
 
   return `
-🔗 مقالة قريبة من سؤالك:
+🔗 مقالة قريبة من سؤالك من نوفا لينك:
 
-${title}
+<strong>${title}</strong>
 ${desc ? "\n" + desc : ""}
 
 ${snippet ? "\nمقتطف:\n" + snippet + "..." : ""}
 
 رابط القراءة:
-${url}
+<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>
   `.trim();
 }
 
@@ -120,7 +122,8 @@ app.post("/api/nova-ai", async (req, res) => {
   const isReturningUser = !!body.isReturningUser;
   const pageUrl = body.pageUrl || body.url || null;
 
-  if (!userMessage || typeof userMessage !== "string") {
+  // حالة فتح الشات بدون رسالة أولى (نترك الرد للذكاء أو fallback ترحيبي)
+  if (!userMessage || typeof userMessage !== "string" || !userMessage.trim()) {
     const reply = getFallbackReply({
       intent: "WELCOME",
       sentiment: "NEUTRAL",
@@ -133,6 +136,7 @@ app.post("/api/nova-ai", async (req, res) => {
       reply,
       provider: "fallback",
       mode: "welcome_empty_message",
+      actionCard: null,
       meta: {
         usedFallback: true
       }
@@ -156,40 +160,57 @@ app.post("/api/nova-ai", async (req, res) => {
     let finalReply = "";
     let provider = "unknown";
     let mode = "unknown";
+    let actionCard = null; // سيتم تعبئتها لاحقًا بناءً على النية
 
     const highMatch = article && score >= (thresholds.HIGH || 0.78);
     const midMatch =
       article && !highMatch && score >= (thresholds.MEDIUM || 0.6);
 
     // ================================
-    // HIGH MATCH — ARTICLE / HYBRID
+    // HIGH MATCH — HYBRID (AI + ARTICLE)
     // ================================
     if (highMatch) {
-      if (language === "en") {
-        const aiResult = await runAIProviders(
-          `Use the following article context to answer the user in English.\n\nTitle: ${article.title}\nURL: ${article.url}\nExcerpt:\n${article.text?.slice(
-            0,
-            800
-          )}\n\nUser question:\n${userMessage}`,
-          "en"
-        );
+      const contextPrompt =
+        language === "en"
+          ? `
+Use the following article context to answer the user in English in a concise, practical way that fits NovaLink AI audience.
 
-        if (aiResult && aiResult.answer) {
-          finalReply = buildHybridReply(article, aiResult.answer, "en");
-          provider =
-            aiResult.provider === "gemini"
-              ? "ai-gemini-hybrid"
-              : "ai-cloudflare-hybrid";
-          mode = "high_match_hybrid_en";
-        } else {
-          finalReply = buildKnowledgeReply(article, "en");
-          provider = "knowledge";
-          mode = "high_match_knowledge_en_fallback_ai";
-        }
+Title: ${article.title}
+URL: ${article.url}
+
+Excerpt:
+${article.text ? article.text.slice(0, 800) : ""}
+
+User question:
+${userMessage}
+          `.trim()
+          : `
+السؤال:
+${userMessage}
+
+مقتطف من مقال قريب من الموضوع:
+${article.text ? article.text.slice(0, 800) : ""}
+
+استخدم هذا المقتطف للإجابة عن السؤال بأسلوب عملي مبسّط يناسب جمهور "نوفا لينك"،
+ثم إن كان مناسبًا، شجّع المستخدم على قراءة المقال لمزيد من التفاصيل.
+          `.trim();
+
+      const aiResult = await runAIProviders(contextPrompt, language);
+
+      if (aiResult && aiResult.answer) {
+        finalReply = buildHybridReply(article, aiResult.answer, language);
+        provider =
+          aiResult.provider === "gemini"
+            ? "ai-gemini-hybrid"
+            : "ai-cloudflare-hybrid";
+        mode = language === "en" ? "high_match_hybrid_en" : "high_match_hybrid_ar";
       } else {
-        finalReply = buildKnowledgeReply(article, "ar");
+        finalReply = buildKnowledgeReply(article, language);
         provider = "knowledge";
-        mode = "high_match_knowledge_ar";
+        mode =
+          language === "en"
+            ? "high_match_knowledge_en_fallback_ai"
+            : "high_match_knowledge_ar_fallback_ai";
       }
     }
 
@@ -261,7 +282,7 @@ ${article.text ? article.text.slice(0, 800) : ""}
     const leadIntents = ["SERVICES", "PARTNERSHIP", "CONSULTATION"];
 
     if (leadIntents.includes(intent)) {
-      // لا يمنع الرد من الخروج؛ يعمل في الخلفية
+      // حفظ الليد في الخلفية
       handleNewLead({
         name: body.name || null,
         email: body.email || null,
@@ -272,6 +293,15 @@ ${article.text ? article.text.slice(0, 800) : ""}
       }).catch((err) => {
         console.error("[NovaBot] Lead handling error:", err.message);
       });
+
+      // ربط النية بنوع البطاقة
+      if (intent === "SERVICES") {
+        actionCard = "business_subscribe"; // بطاقة الخدمات
+      } else if (intent === "PARTNERSHIP") {
+        actionCard = "collaboration"; // بطاقة التعاون
+      } else if (intent === "CONSULTATION") {
+        actionCard = "bot_lead"; // بطاقة بوت لمشروعه
+      }
     }
 
     // ================================
@@ -289,21 +319,29 @@ ${article.text ? article.text.slice(0, 800) : ""}
       mode = "fallback_only";
     }
 
-    // CTA خفيف للاشتراك في الحالات التعليمية
+    // ================================
+    // CTA للاشتراك (بطاقة اشتراك + نَص NUDGE)
+    // ================================
+    const isEducationalIntent =
+      intent === "LEARNING" || intent === "TOOLS_DISCOVERY";
+
     if (
       provider !== "fallback" &&
-      (intent === "LEARNING" || intent === "TOOLS_DISCOVERY")
+      isEducationalIntent &&
+      !actionCard // لم تُحدد بطاقة مسبقًا
     ) {
-      if (Math.random() < 0.3) {
-        const subNudge =
-          NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE &&
-          NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE[0];
-        if (subNudge) {
-          if (language === "en") {
-            finalReply += `\n\n---\n${subNudge}`;
-          } else {
-            finalReply += `\n\n📩 ${subNudge}`;
-          }
+      // 1) بطاقة اشتراك
+      actionCard = "subscribe";
+
+      // 2) نَص خفيف في نهاية الرد
+      const subNudge =
+        NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE &&
+        NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE[0];
+      if (subNudge) {
+        if (language === "en") {
+          finalReply += `\n\n---\n${subNudge}`;
+        } else {
+          finalReply += `\n\n📩 ${subNudge}`;
         }
       }
     }
@@ -313,6 +351,7 @@ ${article.text ? article.text.slice(0, 800) : ""}
       reply: finalReply,
       provider,
       mode,
+      actionCard: actionCard || null,
       meta: {
         language,
         intent,
@@ -338,6 +377,7 @@ ${article.text ? article.text.slice(0, 800) : ""}
       reply: fallback,
       provider: "fallback",
       mode: "server_error",
+      actionCard: null,
       error: err.message
     });
   }
