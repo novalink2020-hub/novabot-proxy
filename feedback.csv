@@ -1,4 +1,0 @@
-timestamp,email,name,note,intent,dialect,language,lead_source,brand
-2025-11-12T22:10:01.905Z,test@example.com,محمد,subscription-from-chat,MARKETING,msa,ar,NovaBot v4.8,NovaLink AI
-2025-11-14T15:59:03.791Z,tester@novalink-ai.com, الكبير محمد,اختبار بعد ربط Environment Group,GENERAL,,,NovaBot v4.8,نوفا لينك
-2025-11-15T07:11:21.453Z,test@novalink-ai.com,محمد,اشتراك عبر NovaBot,GENERAL,,,NovaBot v2.4,نوفا لينك
