@@ -19,7 +19,6 @@ const { getFallbackReply } = require("./fallback-replies");
 const { handleNewLead } = require("./leads-handler");
 
 const app = express();
-// Render يحدد المنفذ عبر متغير PORT
 const PORT = process.env.PORT || 3000;
 
 // ==============================
@@ -51,12 +50,26 @@ app.get("/api/health", async (req, res) => {
 });
 
 // ==============================
-// TRIM HISTORY HELPER
+// HELPERS
 // ==============================
 function trimHistory(history = []) {
   const limit = NOVA_CONFIG.AI_ENGINE.SAFETY_LIMITS.MAX_HISTORY_MESSAGES || 12;
   if (!Array.isArray(history)) return [];
   return history.slice(-limit);
+}
+
+function isSubscribeLikeMessage(text) {
+  if (!text || typeof text !== "string") return false;
+  const t = text.toLowerCase();
+  return (
+    t.includes("اشتراك") ||
+    t.includes("النشرة") ||
+    t.includes("النشره") ||
+    t.includes("القائمة البريدية") ||
+    t.includes("القائمه البريديه") ||
+    t.includes("newsletter") ||
+    t.includes("subscribe")
+  );
 }
 
 // ==============================
@@ -122,7 +135,6 @@ app.post("/api/nova-ai", async (req, res) => {
   const isReturningUser = !!body.isReturningUser;
   const pageUrl = body.pageUrl || body.url || null;
 
-  // حالة فتح الشات بدون رسالة أولى (نترك الرد للذكاء أو fallback ترحيبي)
   if (!userMessage || typeof userMessage !== "string" || !userMessage.trim()) {
     const reply = getFallbackReply({
       intent: "WELCOME",
@@ -143,6 +155,8 @@ app.post("/api/nova-ai", async (req, res) => {
     });
   }
 
+  const subscribeLike = isSubscribeLikeMessage(userMessage);
+
   try {
     // 1) تحليل الرسالة
     const analysis = analyzeUserMessage(userMessage);
@@ -160,7 +174,7 @@ app.post("/api/nova-ai", async (req, res) => {
     let finalReply = "";
     let provider = "unknown";
     let mode = "unknown";
-    let actionCard = null; // سيتم تعبئتها لاحقًا بناءً على النية
+    let actionCard = null;
 
     const highMatch = article && score >= (thresholds.HIGH || 0.78);
     const midMatch =
@@ -282,7 +296,6 @@ ${article.text ? article.text.slice(0, 800) : ""}
     const leadIntents = ["SERVICES", "PARTNERSHIP", "CONSULTATION"];
 
     if (leadIntents.includes(intent)) {
-      // حفظ الليد في الخلفية
       handleNewLead({
         name: body.name || null,
         email: body.email || null,
@@ -294,13 +307,12 @@ ${article.text ? article.text.slice(0, 800) : ""}
         console.error("[NovaBot] Lead handling error:", err.message);
       });
 
-      // ربط النية بنوع البطاقة
       if (intent === "SERVICES") {
-        actionCard = "business_subscribe"; // بطاقة الخدمات
+        actionCard = "business_subscribe";
       } else if (intent === "PARTNERSHIP") {
-        actionCard = "collaboration"; // بطاقة التعاون
+        actionCard = "collaboration";
       } else if (intent === "CONSULTATION") {
-        actionCard = "bot_lead"; // بطاقة بوت لمشروعه
+        actionCard = "bot_lead";
       }
     }
 
@@ -320,20 +332,14 @@ ${article.text ? article.text.slice(0, 800) : ""}
     }
 
     // ================================
-    // CTA للاشتراك (بطاقة اشتراك + نَص NUDGE)
+    // CTA للاشتراك (بطاقة + نَص خفيف)
     // ================================
     const isEducationalIntent =
       intent === "LEARNING" || intent === "TOOLS_DISCOVERY";
 
-    if (
-      provider !== "fallback" &&
-      isEducationalIntent &&
-      !actionCard // لم تُحدد بطاقة مسبقًا
-    ) {
-      // 1) بطاقة اشتراك
+    if ((isEducationalIntent || subscribeLike) && !actionCard) {
       actionCard = "subscribe";
 
-      // 2) نَص خفيف في نهاية الرد
       const subNudge =
         NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE &&
         NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE[0];
