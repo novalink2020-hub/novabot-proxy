@@ -114,4 +114,26 @@ function getFallbackReply({
 }
 
 /**
- * تغليف الرد بحيث يلتزم بش
+ * تغليف الرد بحيث يلتزم بشخصية نوفا بوت ونبرة الاحتراف
+ */
+function wrapWithTone(text, language) {
+  if (!text) return "";
+
+  // لو المستخدم يكتب إنجليزي → نترجم الأسلوب
+  if (language === "en") {
+    return `
+NovaBot — NovaLink AI
+
+${text}
+
+(Responded with a balanced, professional tone.)
+    `.trim();
+  }
+
+  // عربي
+  return text.trim();
+}
+
+module.exports = {
+  getFallbackReply
+};
