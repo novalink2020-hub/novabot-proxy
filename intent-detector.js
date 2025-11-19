@@ -29,7 +29,6 @@ function detectLanguage(message) {
   if (hasArabic && !hasLatin) return "ar";
   if (!hasArabic && hasLatin) return "en";
 
-  // خليط أو غير واضح → نرجع اللغة الأساسية
   return NOVA_CONFIG.META.PRIMARY_LANGUAGE || "ar";
 }
 
@@ -88,16 +87,145 @@ function computeIntentScore(text, keywords) {
 
   if (hitCount === 0) return 0;
 
-  // نقسم على (عدد الكلمات أو 5 كحد أدنى) حتى لا تكون النتيجة صغيرة جداً
   const base = Math.max(keywords.length, 5);
   return hitCount / base;
 }
 
 /**
- * كشف النية بناءً على NOVA_CONFIG.INTENTS
+ * كشف النية:
+ * 1) قواعد يدوية عالية الأولوية (SERVICES / PARTNERSHIP / CONSULTATION / SUBSCRIBE)
+ * 2) ثم fallback على NOVA_CONFIG.INTENTS
  */
 function detectIntent(message, language) {
   const text = message || "";
+  const normalized = normalizeText(text);
+
+  const hasAny = (arr) =>
+    arr.some((kw) => normalized.includes(normalizeText(kw)));
+
+  // 1) شراكات / تعاون
+  if (
+    hasAny([
+      "شراكة",
+      "شراكه",
+      "تعاون",
+      "تعاوُن",
+      "partner",
+      "partnership",
+      "collaboration",
+      "collaborate",
+      "sponsor",
+      "sponsorship",
+      "رعاية",
+      "رعايه"
+    ])
+  ) {
+    return {
+      label: "PARTNERSHIP",
+      description: "نية تتعلق بالتعاون أو الشراكات مع نوفا لينك",
+      score: 1
+    };
+  }
+
+  // 2) بوت دردشة / استشارة حول بوت / مشروع
+  const botWords = [
+    "بوت دردشة",
+    "شات بوت",
+    "شاتبوت",
+    "روبوت محادثة",
+    "روبوت دردشة",
+    "chatbot",
+    "chat bot",
+    "ai bot",
+    "مساعد ذكي",
+    "مساعد آلي"
+  ];
+  const consultWords = [
+    "استشارة",
+    "استشاره",
+    "جلسة",
+    "جلسه",
+    "call",
+    "zoom",
+    "اجتماع",
+    "meeting"
+  ];
+  const projectWords = [
+    "مشروعي",
+    "مشروع",
+    "موقعي",
+    "موقع",
+    "عملي",
+    "البزنس",
+    "متجري",
+    "متجر"
+  ];
+
+  const hasBot = hasAny(botWords);
+  const hasConsult = hasAny(consultWords);
+  const hasProject = hasAny(projectWords);
+
+  if (hasBot || (hasConsult && hasProject)) {
+    return {
+      label: "CONSULTATION",
+      description: "طلب استشارة أو بناء بوت ذكاء اصطناعي لموقع أو مشروع",
+      score: 1
+    };
+  }
+
+  // 3) خدمات / باقات / أسعار
+  if (
+    hasAny([
+      "خدمات نوفا لينك",
+      "خدماتكم",
+      "خدمات",
+      "الباقات",
+      "الباقه",
+      "باقات",
+      "باقة",
+      "الأسعار",
+      "الاسعار",
+      "سعر الخدمة",
+      "سعر الخدمه",
+      "سعر",
+      "pricing",
+      "plans",
+      "services",
+      "packages"
+    ])
+  ) {
+    return {
+      label: "SERVICES",
+      description: "نية مرتبطة بمعرفة خدمات أو باقات نوفا لينك",
+      score: 1
+    };
+  }
+
+  // 4) اشتراك بالنشرة / القائمة البريدية
+  if (
+    hasAny([
+      "النشرة البريدية",
+      "النشره البريديه",
+      "النشرة",
+      "النشره",
+      "قائمة البريدية",
+      "القائمه البريديه",
+      "القائمة البريدية",
+      "newsletter",
+      "subscribe",
+      "اشترك",
+      "اشتراك",
+      "الاشتراك"
+    ])
+  ) {
+    return {
+      label: "LEARNING",
+      description: "نية مرتبطة بمتابعة المحتوى أو النشرة البريدية لنوفا لينك",
+      score: 0.9
+    };
+  }
+
+  // 5) fallback على NOVA_CONFIG.INTENTS
   const intentsConfig = NOVA_CONFIG.INTENTS || {};
   let bestIntent = {
     label: "GENERIC",
@@ -105,7 +233,6 @@ function detectIntent(message, language) {
     score: 0
   };
 
-  // نمر على كل النوايا المعرفة في الكونفج
   for (const intentKey of Object.keys(intentsConfig)) {
     const intentDef = intentsConfig[intentKey];
     if (!intentDef || !Array.isArray(intentDef.KEYWORDS)) continue;
@@ -121,7 +248,6 @@ function detectIntent(message, language) {
     }
   }
 
-  // لو النتيجة ضعيفة جداً → نعتبرها GENERIC
   if (bestIntent.score < 0.15) {
     const generic = intentsConfig.GENERIC || {};
     return {
@@ -135,8 +261,7 @@ function detectIntent(message, language) {
 }
 
 /**
- * تقدير بسيط للمشاعر (Positive / Negative / Neutral)
- * يعتمد على قوائم FEEDBACK_POSITIVE و FEEDBACK_NEGATIVE
+ * تقدير بسيط للمشاعر
  */
 function detectSentiment(message) {
   const text = normalizeText(message);
@@ -176,12 +301,7 @@ function detectSentiment(message) {
 }
 
 /**
- * واجهة تحليل موحّدة:
- * تأخذ رسالة المستخدم وتُرجع:
- * - اللغة
- * - النية
- * - المجال (هل هو AI/business؟)
- * - المشاعر
+ * واجهة تحليل موحّدة
  */
 function analyzeUserMessage(message) {
   const lang = detectLanguage(message);
@@ -194,7 +314,6 @@ function analyzeUserMessage(message) {
     intent,
     sentiment,
     domain,
-    // يمكن استخدام هذا في الـ logs أو الـ debugging
     meta: {
       isAIDomain: domain.isAIDomain,
       totalDomainHits: domain.totalHits,
@@ -203,7 +322,6 @@ function analyzeUserMessage(message) {
   };
 }
 
-// تصدير الدوال الأساسية
 module.exports = {
   detectLanguage,
   detectDomainFlags,
