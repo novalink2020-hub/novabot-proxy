@@ -1,401 +1,136 @@
 // server-novalink.js
-// الخادم الأساسي لدماغ نوفا بوت — نسخة مخصصة لموقع نوفا لينك فقط
-
+// NovaBot – NovaLink AI Server
 "use strict";
 
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
+const fetch = require("node-fetch");
 
 const NOVA_CONFIG = require("./nova-config");
-const { analyzeUserMessage } = require("./intent-detector");
+const { runAIProviders } = require("./ai-providers");
 const {
-  findBestMatch,
   ensureKnowledgeLoaded,
+  findBestMatch,
   getKnowledgeStats
 } = require("./knowledge-engine");
-const { runAIProviders } = require("./ai-providers");
-const { getFallbackReply } = require("./fallback-replies");
-const { handleNewLead } = require("./leads-handler");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-
-// ==============================
-// MIDDLEWARES
-// ==============================
 app.use(cors());
-app.use(bodyParser.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 
-// ==============================
-// HEALTH CHECK
-// ==============================
-app.get("/api/health", async (req, res) => {
-  try {
-    await ensureKnowledgeLoaded();
-    const stats = getKnowledgeStats();
+// Debug: Show server start
+console.log("[NovaBot-NovaLink] Booting server...");
 
-    return res.json({
-      ok: true,
-      service: "NovaBot-NovaLink",
-      knowledge: stats,
-      timestamp: new Date().toISOString()
-    });
-  } catch (err) {
-    return res.status(500).json({
-      ok: false,
-      error: err.message
-    });
-  }
+// ========================
+// 🔍 مسار الفحص الجديد
+// ========================
+app.get("/api/vars", (req, res) => {
+  res.json({
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY ? "FOUND" : "NOT FOUND",
+    CF_AI_API_KEY: process.env.CF_AI_API_KEY ? "FOUND" : "NOT FOUND",
+    CF_ACCOUNT_ID: process.env.CF_ACCOUNT_ID ? "FOUND" : "NOT FOUND",
+    NODE_ENV: process.env.NODE_ENV || "undefined"
+  });
 });
 
-// ==============================
-// HELPERS
-// ==============================
-function trimHistory(history = []) {
-  const limit = NOVA_CONFIG.AI_ENGINE.SAFETY_LIMITS.MAX_HISTORY_MESSAGES || 12;
-  if (!Array.isArray(history)) return [];
-  return history.slice(-limit);
-}
+// ========================
+// Health Check
+// ========================
+app.get("/api/health", async (req, res) => {
+  const stats = getKnowledgeStats();
+  res.json({
+    ok: true,
+    service: "NovaBot-NovaLink",
+    knowledge: stats,
+    timestamp: new Date().toISOString()
+  });
+});
 
-function isSubscribeLikeMessage(text) {
-  if (!text || typeof text !== "string") return false;
-  const t = text.toLowerCase();
-  return (
-    t.includes("اشتراك") ||
-    t.includes("النشرة") ||
-    t.includes("النشره") ||
-    t.includes("القائمة البريدية") ||
-    t.includes("القائمه البريديه") ||
-    t.includes("newsletter") ||
-    t.includes("subscribe")
-  );
-}
-
-// ==============================
-// KNOWLEDGE REPLY (HTML-FRIENDLY)
-// ==============================
-function buildKnowledgeReply(article, language = "ar") {
-  if (!article) return null;
-
-  const title = article.title || "مقال من نوفا لينك";
-  const url = article.url || NOVA_CONFIG.META.BASE_URL;
-  const desc = article.description || "";
-  const snippet = article.text ? article.text.slice(0, 350) : "";
-
-  if (language === "en") {
-    return `
-🔗 A related article from NovaLink AI:
-
-<strong>${title}</strong>
-${desc ? "\n" + desc : ""}
-
-${snippet ? "\nExcerpt:\n" + snippet + "..." : ""}
-
-Read more:
-<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>
-    `.trim();
-  }
-
-  return `
-🔗 مقالة قريبة من سؤالك من نوفا لينك:
-
-<strong>${title}</strong>
-${desc ? "\n" + desc : ""}
-
-${snippet ? "\nمقتطف:\n" + snippet + "..." : ""}
-
-رابط القراءة:
-<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>
-  `.trim();
-}
-
-// ==============================
-// HYBRID REPLY (AI + ARTICLE)
-// ==============================
-function buildHybridReply(article, aiAnswer, language = "ar") {
-  const articleReply = buildKnowledgeReply(article, language);
-  if (!articleReply && !aiAnswer) return "";
-  if (!articleReply) return aiAnswer.trim();
-  if (!aiAnswer) return articleReply;
-
-  const separator = "\n\n---\n\n";
-  return `${aiAnswer.trim()}${separator}${articleReply}`;
-}
-
-// ==============================
-// MAIN ENDPOINT — /api/nova-ai
-// ==============================
+// ========================
+// Main API – NovaBot brain
+// ========================
 app.post("/api/nova-ai", async (req, res) => {
-  const body = req.body || {};
-
-  const userMessage =
-    body.message || body.question || body.prompt || "";
-  const history = trimHistory(body.history || body.messages || []);
-  const isReturningUser = !!body.isReturningUser;
-  const pageUrl = body.pageUrl || body.url || null;
-
-  if (!userMessage || typeof userMessage !== "string" || !userMessage.trim()) {
-    const reply = getFallbackReply({
-      intent: "WELCOME",
-      sentiment: "NEUTRAL",
-      isReturningUser,
-      language: NOVA_CONFIG.META.PRIMARY_LANGUAGE || "ar"
-    });
-
-    return res.json({
-      ok: true,
-      reply,
-      provider: "fallback",
-      mode: "welcome_empty_message",
-      actionCard: null,
-      meta: {
-        usedFallback: true
-      }
-    });
-  }
-
-  const subscribeLike = isSubscribeLikeMessage(userMessage);
-
   try {
-    // 1) تحليل الرسالة
-    const analysis = analyzeUserMessage(userMessage);
-    const language = analysis.language || "ar";
-    const intent = analysis.intent.label || "GENERIC";
-    const sentiment = analysis.sentiment.label || "NEUTRAL";
-    const isAIDomain = !!analysis.meta?.isAIDomain;
+    const userMessage =
+      req.body?.message ||
+      req.body?.question ||
+      "";
 
-    // 2) معرفة من نوفا لينك
-    const knowledge = await findBestMatch(userMessage);
-    const article = knowledge.bestMatch;
-    const score = knowledge.score || 0;
-    const thresholds = NOVA_CONFIG.KNOWLEDGE.MATCH_THRESHOLDS;
+    const history = Array.isArray(req.body?.history)
+      ? req.body.history
+      : [];
 
+    const language = req.body?.locale === "en" ? "en" : "ar";
+
+    // 1) ضمان تحميل المعرفة
+    await ensureKnowledgeLoaded();
+
+    // 2) أفضل مطابقة في المعرفة
+    const knowledgeResult = await findBestMatch(userMessage);
+    const bestMatch = knowledgeResult.bestMatch;
+    const similarityScore = knowledgeResult.score;
+
+    // 3) نحضر رد الذكاء الاصطناعي
+    const aiResult = await runAIProviders(userMessage, language);
+
+    // تجهيز الرد
     let finalReply = "";
-    let provider = "unknown";
-    let mode = "unknown";
     let actionCard = null;
 
-    const highMatch = article && score >= (thresholds.HIGH || 0.78);
-    const midMatch =
-      article && !highMatch && score >= (thresholds.MEDIUM || 0.6);
+    // --- قواعد الدمج ---
+    if (bestMatch && similarityScore >= 0.25) {
+      // رد قائم على المحتوى + AI
+      finalReply += `🔗 مقالة قريبة من سؤالك من نوفا لينك:\n\n`;
+      finalReply += `${bestMatch.title}\n\n`;
+      finalReply += `رابط القراءة:\n${bestMatch.url}\n\n`;
 
-    // ================================
-    // HIGH MATCH — HYBRID (AI + ARTICLE)
-    // ================================
-    if (highMatch) {
-      const contextPrompt =
-        language === "en"
-          ? `
-Use the following article context to answer the user in English in a concise, practical way that fits NovaLink AI audience.
-
-Title: ${article.title}
-URL: ${article.url}
-
-Excerpt:
-${article.text ? article.text.slice(0, 800) : ""}
-
-User question:
-${userMessage}
-          `.trim()
-          : `
-السؤال:
-${userMessage}
-
-مقتطف من مقال قريب من الموضوع:
-${article.text ? article.text.slice(0, 800) : ""}
-
-استخدم هذا المقتطف للإجابة عن السؤال بأسلوب عملي مبسّط يناسب جمهور "نوفا لينك"،
-ثم إن كان مناسبًا، شجّع المستخدم على قراءة المقال لمزيد من التفاصيل.
-          `.trim();
-
-      const aiResult = await runAIProviders(contextPrompt, language);
-
-      if (aiResult && aiResult.answer) {
-        finalReply = buildHybridReply(article, aiResult.answer, language);
-        provider =
-          aiResult.provider === "gemini"
-            ? "ai-gemini-hybrid"
-            : "ai-cloudflare-hybrid";
-        mode = language === "en" ? "high_match_hybrid_en" : "high_match_hybrid_ar";
-      } else {
-        finalReply = buildKnowledgeReply(article, language);
-        provider = "knowledge";
-        mode =
-          language === "en"
-            ? "high_match_knowledge_en_fallback_ai"
-            : "high_match_knowledge_ar_fallback_ai";
+      if (aiResult?.answer) {
+        finalReply += `\n\n—\nإليك فكرة إضافية من نوفا بوت:\n${aiResult.answer}`;
       }
+    } else {
+      // لا يوجد تطابق – نعتمد على AI فقط
+      finalReply =
+        aiResult?.answer ||
+        "لا أجد مقالًا مطابقًا… ولكن يمكنني التفكير معك بخط مبدئي نبني عليه.";
     }
 
-    // ================================
-    // MEDIUM MATCH — HYBRID WHEN AI TOPIC
-    // ================================
-    if (!finalReply && midMatch) {
-      const isEducationalIntent =
-        intent === "LEARNING" || intent === "TOOLS_DISCOVERY";
+    // تحليل مسار البطاقات
+    const textLower = userMessage.toLowerCase();
 
-      if (isAIDomain || isEducationalIntent) {
-        const aiResult = await runAIProviders(
-          `
-السؤال:
-${userMessage}
-
-مقتطف من مقال قريب من الموضوع:
-${article.text ? article.text.slice(0, 800) : ""}
-
-استخدم هذا المقتطف لبناء إجابة عملية مختصرة، ثم إن كان مناسبًا، شجّع المستخدم على قراءة المقال.
-          `.trim(),
-          language
-        );
-
-        if (aiResult && aiResult.answer) {
-          finalReply = buildHybridReply(article, aiResult.answer, language);
-          provider =
-            aiResult.provider === "gemini"
-              ? "ai-gemini-hybrid"
-              : "ai-cloudflare-hybrid";
-          mode = "medium_match_hybrid";
-        } else {
-          finalReply = buildKnowledgeReply(article, language);
-          provider = "knowledge";
-          mode = "medium_match_knowledge_fallback_ai";
-        }
-      } else {
-        finalReply = buildKnowledgeReply(article, language);
-        provider = "knowledge";
-        mode = "medium_match_knowledge";
-      }
-    }
-
-    // ================================
-    // DIRECT AI (NO/LOW MATCH)
-    // ================================
-    const shouldUseAI =
-      !finalReply &&
-      (isAIDomain ||
-        intent === "LEARNING" ||
-        intent === "TOOLS_DISCOVERY" ||
-        intent === "GENERIC");
-
-    if (!finalReply && shouldUseAI) {
-      const aiResult = await runAIProviders(userMessage, language);
-      if (aiResult && aiResult.answer) {
-        finalReply = aiResult.answer.trim();
-        provider =
-          aiResult.provider === "gemini"
-            ? "ai-gemini"
-            : "ai-cloudflare";
-        mode = "direct_ai";
-      }
-    }
-
-    // ================================
-    // LEADS (SERVICES / PARTNERSHIP / CONSULTATION)
-    // ================================
-    const leadIntents = ["SERVICES", "PARTNERSHIP", "CONSULTATION"];
-
-    if (leadIntents.includes(intent)) {
-      handleNewLead({
-        name: body.name || null,
-        email: body.email || null,
-        phone: body.phone || null,
-        intent,
-        message: userMessage,
-        pageUrl
-      }).catch((err) => {
-        console.error("[NovaBot] Lead handling error:", err.message);
-      });
-
-      if (intent === "SERVICES") {
-        actionCard = "business_subscribe";
-      } else if (intent === "PARTNERSHIP") {
-        actionCard = "collaboration";
-      } else if (intent === "CONSULTATION") {
-        actionCard = "bot_lead";
-      }
-    }
-
-    // ================================
-    // FALLBACK — لو لم يوجد رد حتى الآن
-    // ================================
-    if (!finalReply) {
-      finalReply = getFallbackReply({
-        intent,
-        sentiment,
-        isReturningUser,
-        language
-      });
-
-      provider = "fallback";
-      mode = "fallback_only";
-    }
-
-    // ================================
-    // CTA للاشتراك (بطاقة + نَص خفيف)
-    // ================================
-    const isEducationalIntent =
-      intent === "LEARNING" || intent === "TOOLS_DISCOVERY";
-
-    if ((isEducationalIntent || subscribeLike) && !actionCard) {
+    if (textLower.includes("اشترك") || textLower.includes("النشرة")) {
       actionCard = "subscribe";
-
-      const subNudge =
-        NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE &&
-        NOVA_CONFIG.RESPONSES.SUBSCRIBE_NUDGE[0];
-      if (subNudge) {
-        if (language === "en") {
-          finalReply += `\n\n---\n${subNudge}`;
-        } else {
-          finalReply += `\n\n📩 ${subNudge}`;
-        }
-      }
+    }
+    if (textLower.includes("خدمة") || textLower.includes("خدمات")) {
+      actionCard = "business_subscribe";
+    }
+    if (textLower.includes("بوت") || textLower.includes("دردشة")) {
+      actionCard = "bot_lead";
+    }
+    if (textLower.includes("شراكة") || textLower.includes("تعاون")) {
+      actionCard = "collaboration";
     }
 
     return res.json({
       ok: true,
       reply: finalReply,
-      provider,
-      mode,
-      actionCard: actionCard || null,
-      meta: {
-        language,
-        intent,
-        sentiment,
-        isAIDomain,
-        knowledgeScore: score,
-        hasArticle: !!article,
-        pageUrl
-      }
+      actionCard
     });
   } catch (err) {
-    console.error("[NovaBot-NovaLink] Unexpected Error:", err);
-
-    const fallback = getFallbackReply({
-      intent: "GENERIC",
-      sentiment: "NEUTRAL",
-      isReturningUser: false,
-      language: NOVA_CONFIG.META.PRIMARY_LANGUAGE || "ar"
-    });
-
+    console.error("❌ Server Error:", err.message);
     return res.status(500).json({
       ok: false,
-      reply: fallback,
-      provider: "fallback",
-      mode: "server_error",
-      actionCard: null,
-      error: err.message
+      reply: "حدث خطأ غير متوقع. سيتم التحقيق فيه."
     });
   }
 });
 
-// ==============================
-// RUN SERVER
-// ==============================
+// ========================
+// Start Server
+// ========================
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(
     `[NovaBot-NovaLink] Server started on port ${PORT} — Ready at /api/nova-ai`
   );
 });
-
-module.exports = app;
