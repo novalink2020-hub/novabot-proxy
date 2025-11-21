@@ -1,27 +1,27 @@
 // ===========================================
-// NovaBot Mini Server v3 — Production Edition
-// By Mohammed Abu Snaina – NOVALINK.AI
+// NovaBot Mini Server v1
+// يعمل كجسر بسيط: واجهة → نوايا → دماغ → واجهة
 // ===========================================
 
 import http from "http";
 
-// وحدات الذكاء
+// استدعاء وحدات الذكاء
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
 // -------------------------------
 //  إعدادات السيرفر
 // -------------------------------
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
 const server = http.createServer(async (req, res) => {
-  // CORS
+  // إعداد الـ CORS للواجهة
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   // -------------------------------
-  // Health Check (Render Ping)
+  // Health Check for Render
   // -------------------------------
   if (req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -34,59 +34,54 @@ const server = http.createServer(async (req, res) => {
     );
   }
 
+  // -------------------------------
   // Preflight
+  // -------------------------------
   if (req.method === "OPTIONS") {
     res.writeHead(200);
     return res.end();
   }
 
-  // Only POST
+  // -------------------------------
+  // API endpoint must be POST
+  // -------------------------------
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "Method not allowed" }));
   }
 
   // -------------------------------
-  // قراءة جسم الرسالة
+  // قراءة جسم الطلب
   // -------------------------------
   let body = "";
   req.on("data", (chunk) => (body += chunk));
 
   req.on("end", async () => {
     try {
-      let data = null;
-
-      try {
-        data = JSON.parse(body || "{}");
-      } catch (err) {
-        console.error("❌ Invalid JSON received:", body);
-        res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ ok: false, error: "Invalid JSON" }));
-      }
-
+      const data = JSON.parse(body || "{}");
       const userMessage = (data.message || "").trim();
 
       if (!userMessage) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ ok: false, error: "Empty message" }));
+        return res.end(JSON.stringify({ error: "Empty message" }));
       }
 
-      // -------------------------------
-      // تحليل النية
-      // -------------------------------
+      // ===========================================
+      // 1) تحليل النية + اللغة + اللهجة
+      // ===========================================
       const analysis = await detectNovaIntent(userMessage);
 
-      // -------------------------------
-      // الدماغ (مع كل المعلومات)
-      // -------------------------------
+      // ===========================================
+      // 2) إرسال كل شيء للدماغ
+      // ===========================================
       const brainReply = await novaBrainSystem({
         message: userMessage,
         ...analysis
       });
 
-      // -------------------------------
-      // الرد النهائي
-      // -------------------------------
+      // ===========================================
+      // 3) إرسال الرد للواجهة
+      // ===========================================
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
         JSON.stringify({
@@ -96,7 +91,7 @@ const server = http.createServer(async (req, res) => {
         })
       );
     } catch (err) {
-      console.error("🔥 Server Fatal Error:", err);
+      console.error("🔥 Server Error:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: false, error: "Server error" }));
     }
