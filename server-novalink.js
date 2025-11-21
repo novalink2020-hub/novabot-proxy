@@ -17,21 +17,45 @@ const PORT = process.env.PORT || 3000;
 const server = http.createServer(async (req, res) => {
   // إعداد الـ CORS للواجهة
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
+  // -------------------------------
+  // Health Check for Render
+  // -------------------------------
+  if (req.method === "GET") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        status: "NovaBot Brain running",
+        timestamp: Date.now()
+      })
+    );
+  }
+
+  // -------------------------------
+  // Preflight
+  // -------------------------------
   if (req.method === "OPTIONS") {
     res.writeHead(200);
     return res.end();
   }
 
+  // -------------------------------
+  // API endpoint must be POST
+  // -------------------------------
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ error: "Method not allowed" }));
   }
 
+  // -------------------------------
+  // قراءة جسم الطلب
+  // -------------------------------
   let body = "";
   req.on("data", (chunk) => (body += chunk));
+
   req.on("end", async () => {
     try {
       const data = JSON.parse(body || "{}");
@@ -43,26 +67,20 @@ const server = http.createServer(async (req, res) => {
       }
 
       // ===========================================
-      // 1) تحليل النص → اللغة + اللهجة + النية
+      // 1) تحليل النية + اللغة + اللهجة
       // ===========================================
       const analysis = await detectNovaIntent(userMessage);
 
-      // analysis سيحتوي:
-      // { intentId, toneHint, language, dialectHint, suggestedCard }
-
       // ===========================================
-      // 2) إرسال كل شيء إلى دماغ نوفا
+      // 2) إرسال كل شيء للدماغ
       // ===========================================
       const brainReply = await novaBrainSystem({
         message: userMessage,
         ...analysis
       });
 
-      // brainReply يحتوي:
-      // { reply, actionCard }
-
       // ===========================================
-      // 3) إعادة الرد للواجهة الأمامية
+      // 3) إرسال الرد للواجهة
       // ===========================================
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
@@ -72,7 +90,6 @@ const server = http.createServer(async (req, res) => {
           actionCard: brainReply.actionCard || null
         })
       );
-
     } catch (err) {
       console.error("🔥 Server Error:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
