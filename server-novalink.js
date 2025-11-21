@@ -4,7 +4,6 @@
 // ===========================================
 
 import http from "http";
-import url from "url";
 
 // استدعاء وحدات الذكاء
 import { detectNovaIntent } from "./novaIntentDetector.js";
@@ -31,37 +30,39 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify({ error: "Method not allowed" }));
   }
 
-  // قراءة الـ JSON
   let body = "";
   req.on("data", (chunk) => (body += chunk));
   req.on("end", async () => {
     try {
       const data = JSON.parse(body || "{}");
-      const userMessage = data.message || "";
+      const userMessage = (data.message || "").trim();
 
-      if (!userMessage.trim()) {
+      if (!userMessage) {
         res.writeHead(400, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ error: "Empty message" }));
       }
 
       // ===========================================
-      // 1) تحليل اللغة + اللهجة + النية
+      // 1) تحليل النص → اللغة + اللهجة + النية
       // ===========================================
       const analysis = await detectNovaIntent(userMessage);
 
+      // analysis سيحتوي:
+      // { intentId, toneHint, language, dialectHint, suggestedCard }
+
       // ===========================================
-      // 2) إرسال النص + التحليل إلى الدماغ الجديد
+      // 2) إرسال كل شيء إلى دماغ نوفا
       // ===========================================
       const brainReply = await novaBrainSystem({
-        userMessage,
-        analysis
+        message: userMessage,
+        ...analysis
       });
 
       // brainReply يحتوي:
       // { reply, actionCard }
 
       // ===========================================
-      // 3) إعادة الرد إلى الواجهة
+      // 3) إعادة الرد للواجهة الأمامية
       // ===========================================
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
@@ -71,6 +72,7 @@ const server = http.createServer(async (req, res) => {
           actionCard: brainReply.actionCard || null
         })
       );
+
     } catch (err) {
       console.error("🔥 Server Error:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
