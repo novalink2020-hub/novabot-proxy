@@ -216,8 +216,8 @@ if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 }
 
-const GEMINI_MODEL_PRIMARY = "gemini-1.5-flash-latest";
-const GEMINI_MODEL_FALLBACK = "gemini-1.5-pro-latest";
+const GEMINI_MODEL_PRIMARY = "gemini-1.5-flash";
+const GEMINI_MODEL_FALLBACK = "gemini-1.5-pro";
 
 function buildGeminiPrompt(userText, analysis, bestItem) {
   const lang = analysis.language === "en" ? "en" : "ar";
