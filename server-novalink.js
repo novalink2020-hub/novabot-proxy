@@ -49,13 +49,13 @@ const server = http.createServer(async (req, res) => {
       // ===========================================
       const analysis = await detectNovaIntent(userMessage);
 
-      // analysis يحتوي:
-      // { intentId, toneHint, language, dialectHint, suggestedCard }
-
       // ===========================================
-      // 2) إرسال التحليل إلى الدماغ
+      // 2) إرسال النص + التحليل إلى الدماغ الجديد
       // ===========================================
-      const brainReply = await novaBrainSystem(analysis);
+      const brainReply = await novaBrainSystem({
+        userMessage,
+        analysis
+      });
 
       // brainReply يحتوي:
       // { reply, actionCard }
