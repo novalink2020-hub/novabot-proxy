@@ -1,25 +1,12 @@
 {
   "name": "novabot-brain-system",
   "version": "1.0.0",
-  "description": "NovaBot Mini Server + Brain + Intent System",
   "type": "module",
   "main": "server-novalink.js",
   "scripts": {
     "start": "node server-novalink.js"
-    },
-"dependencies": {
-  "@google/generative-ai": "^0.10.0"
-}
-  "engines": {
-    "node": ">=18"
   },
-  "keywords": [
-    "novalink",
-    "novabot",
-    "ai-chatbot",
-    "brain-system",
-    "intent-engine"
-  ],
-  "author": "Mohammed Abu Snaina",
-  "license": "MIT"
+  "dependencies": {
+    "@google/generative-ai": "latest"
+  }
 }
