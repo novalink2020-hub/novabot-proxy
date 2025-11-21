@@ -1,6 +1,6 @@
 // ===========================================
 // novaBrainSystem.js
-// دماغ نوفا بوت الهجين: (نوايا + معرفة + Gemini + ردود مؤتمتة)
+// دماغ نوفا بوت الهجين: (نوايا + معرفة + Gemini + ردود مؤتمتة v4.8)
 // By Mohammed Abu Snaina – NOVALINK.AI
 // ===========================================
 
@@ -11,19 +11,18 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const KNOWLEDGE_JSON_URL = process.env.KNOWLEDGE_JSON_URL || "";
 
-// عتبات التطابق الجديدة
-const STRONG_MATCH_THRESHOLD = 0.8;  // تطابق قوي
-const MEDIUM_MATCH_THRESHOLD = 0.65; // تطابق متوسط
+const STRONG_MATCH_THRESHOLD = 0.8;
+const MEDIUM_MATCH_THRESHOLD = 0.65;
 
-// حد تقريبي لطول الإجابة من Gemini
 const MAX_OUTPUT_TOKENS = 400;
 
-// كاش للمعرفة
 let knowledgeCache = null;
 let knowledgeLoadedAt = 0;
-const KNOWLEDGE_TTL_MS = 12 * 60 * 60 * 1000; // 12 ساعة
+const KNOWLEDGE_TTL_MS = 12 * 60 * 60 * 1000;
 
-/* =============== أدوات مساعدة للنصوص =============== */
+/* =====================================================
+   أدوات مساعدة للنصوص
+===================================================== */
 
 function escapeHtml(str = "") {
   return str.replace(/[&<>"]/g, (c) => {
@@ -51,7 +50,9 @@ function tokenize(str = "") {
   );
 }
 
-/* =============== تحميل قاعدة المعرفة =============== */
+/* =====================================================
+   تحميل قاعدة المعرفة
+===================================================== */
 
 function normalizeItem(item) {
   if (!item) return null;
@@ -70,41 +71,40 @@ async function loadKnowledgeBase() {
   }
 
   const now = Date.now();
+
   if (knowledgeCache && now - knowledgeLoadedAt < KNOWLEDGE_TTL_MS) {
     return knowledgeCache;
   }
 
   try {
     const res = await fetch(KNOWLEDGE_JSON_URL);
-    if (!res.ok) {
-      throw new Error("Knowledge JSON HTTP " + res.status);
-    }
+    if (!res.ok) throw new Error("Knowledge JSON HTTP " + res.status);
+
     const json = await res.json();
     const cleaned = Array.isArray(json)
       ? json.map(normalizeItem).filter((x) => x && x.title && x.url)
       : [];
+
     knowledgeCache = cleaned;
-    knowledgeLoadedAt = Date.now();
+    knowledgeLoadedAt = now;
+
     console.log("📘 Knowledge loaded. Items:", cleaned.length);
     return cleaned;
+
   } catch (err) {
     console.error("❌ Failed to load knowledge JSON:", err);
     knowledgeCache = [];
-    knowledgeLoadedAt = Date.now();
+    knowledgeLoadedAt = now;
     return [];
   }
 }
 
 function findBestMatch(question, items) {
-  if (!question || !items || !items.length) {
-    return { score: 0, item: null };
-  }
-
   const qTokens = tokenize(question);
   if (!qTokens.size) return { score: 0, item: null };
 
-  let bestItem = null;
   let bestScore = 0;
+  let bestItem = null;
 
   for (const item of items) {
     const combined =
@@ -115,15 +115,14 @@ function findBestMatch(question, items) {
       (item.excerpt || "");
 
     const tTokens = tokenize(combined);
-    if (!tTokens.size) continue;
-
     let common = 0;
+
     qTokens.forEach((t) => {
       if (tTokens.has(t)) common++;
     });
 
-    // معيار بسيط: نسبة التداخل إلى حجم سؤال المستخدم
     const score = common / Math.max(3, qTokens.size);
+
     if (score > bestScore) {
       bestScore = score;
       bestItem = item;
@@ -133,7 +132,9 @@ function findBestMatch(question, items) {
   return { score: bestScore, item: bestItem };
 }
 
-/* =============== ردود مؤتمتة (من روح v4.8) =============== */
+/* =====================================================
+   الردود المؤتمتة — نسخة 4.8
+===================================================== */
 
 const genericReplies = [
   `👋 أهلاً بك في نوفا لينك، حيث نؤمن أن الذكاء الاصطناعي ليس تقنية فقط، بل رحلة لاكتشاف قدراتك من جديد.<br>
@@ -162,104 +163,77 @@ const genericReplies = [
 ];
 
 function getRandomGenericReply() {
-  const idx = Math.floor(Math.random() * genericReplies.length);
-  return genericReplies[idx];
+  return genericReplies[Math.floor(Math.random() * genericReplies.length)];
 }
 
 function buildNoMatchReply() {
   return `💬 يبدو أن سؤالك يفتح بابًا جديدًا لم نكتب عنه بعد في نوفا لينك،<br>
-  لكننا نُرحّب دائمًا بالأفكار الجديدة التي تُلهمنا لموضوعات قادمة.<br>
-  شاركنا الزاوية التي تهمك أكثر، فربما تكون هي موضوع التدوينة التالية ✨<br>
-  🔗 <a href="https://novalink-ai.com/about-us-althkaa-alastnaay" target="_blank" class="nova-link">تعرّف على أهداف نوفا لينك</a>`;
+  لكننا نُرحّب دائمًا بالأفكار التي تُلهمنا لموضوعات قادمة.<br>
+  شاركنا الزاوية التي تهمك… فقد تكون هي التدوينة التالية ✨<br>
+  🔗 <a href="https://novalink-ai.com/about-us-althkaa-alastnaay" target="_blank" class="nova-link">عن نوفا لينك</a>`;
 }
 
-/* =============== ردود التطابق مع المعرفة =============== */
+/* =====================================================
+   ردود التطابق مع المعرفة
+===================================================== */
 
 function buildStrongMatchReply(item) {
-  const safeTitle = escapeHtml(item.title || "");
-  const safeUrl = escapeAttr(item.url || "#");
-
   return (
-    `💬 يبدو أن سؤالك يلامس موضوعًا تناولناه في نوفا لينك بعنوان:<br>` +
-    `“${safeTitle}”.<br>` +
-    `هذه التدوينة كُتبت لتقدّم إجابة مركّزة حول هذا النوع من الأسئلة.<br>` +
-    `🔗 <a href="${safeUrl}" target="_blank" class="nova-link">اقرأ المقال على نوفا لينك</a>`
+    `💬 يبدو أن سؤالك يلامس موضوعًا تناولناه بعنوان:<br>` +
+    `“${escapeHtml(item.title)}”.<br>` +
+    `🔗 <a href="${escapeAttr(item.url)}" target="_blank" class="nova-link">اقرأ المقال</a>`
   );
 }
 
 function buildMidMatchTemplateReply(item) {
-  const safeTitle = escapeHtml(item.title || "");
-  const safeUrl = escapeAttr(item.url || "#");
-
   return (
-    `💬 سؤالك قريب من فكرة ناقشناها في نوفا لينك بعنوان:<br>` +
-    `“${safeTitle}”.<br>` +
-    `قد لا تكون الإجابة طبق الأصل عمّا في ذهنك، لكنها ستفتح لك زاوية تفكير أوسع حول الموضوع.<br>` +
-    `🔗 <a href="${safeUrl}" target="_blank" class="nova-link">اقرأ المقال</a>`
+    `💬 سؤالك قريب من فكرة ناقشناها بعنوان:<br>` +
+    `“${escapeHtml(item.title)}”.<br>` +
+    `🔗 <a href="${escapeAttr(item.url)}" target="_blank" class="nova-link">فتح المقال</a>`
   );
 }
 
 function wrapAiAnswerWithLink(aiText, item) {
-  const safeUrl = escapeAttr(item.url || "#");
   const safeAi = escapeHtml(aiText).replace(/\n/g, "<br>");
-
   return (
     safeAi +
-    `<br><br>🔗 <a href="${safeUrl}" target="_blank" class="nova-link">تعمّق أكثر من خلال هذه التدوينة على نوفا لينك</a>`
+    `<br><br>🔗 <a href="${escapeAttr(item.url)}" target="_blank" class="nova-link">مقال ذو صلة</a>`
   );
 }
 
-/* =============== إعداد Gemini =============== */
+/* =====================================================
+   إعداد Gemini — الموديلات الجديدة الصحيحة
+===================================================== */
 
 let genAI = null;
 if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 }
 
-const GEMINI_MODEL_PRIMARY = "gemini-1.5-flash";
-const GEMINI_MODEL_FALLBACK = "gemini-1.5-pro";
+// موديلات Google المدعومة
+const MODELS_TO_TRY = [
+  "gemini-2.0-flash",
+  "gemini-2.0-pro",
+  "gemini-1.0-pro"
+];
 
 function buildGeminiPrompt(userText, analysis, bestItem) {
-  const lang = analysis.language === "en" ? "en" : "ar";
-  const intentId = analysis.intentId || "explore";
+  const lang = analysis.language === "en" ? "English" : "Arabic";
 
-  let base = "";
-
-  base += `السؤال من المستخدم:\n"${userText}"\n\n`;
+  let base = `السؤال:\n"${userText}"\n\n`;
 
   if (bestItem) {
-    base += `هذه بيانات تدوينة من موقع نوفا لينك لها صلة محتملة بالسؤال:\n`;
+    base += `مقال ذو صلة:\n`;
     base += `العنوان: ${bestItem.title}\n`;
     if (bestItem.description) base += `الوصف: ${bestItem.description}\n`;
-    if (bestItem.excerpt) base += `مقتطف من بداية التدوينة: ${bestItem.excerpt}\n`;
-    base += `استخدم هذه التدوينة كمرجع مساعد فقط، لا تكتفِ بتلخيصها.\n\n`;
+    if (bestItem.excerpt) base += `مقتطف: ${bestItem.excerpt}\n`;
   }
 
-  base += `معلومات عن سياق المستخدم:\n`;
-  base += `اللغة المتوقعة للإجابة: ${lang === "en" ? "English" : "Arabic (Modern Standard, friendly)"}.\n`;
-  if (analysis.dialectHint && lang !== "en") {
-    base += `اللهجة المحتملة: ${analysis.dialectHint}، يمكن إدخال كلمات بسيطة جدًا منها بشكل طبيعي بدون مبالغة.\n`;
-  }
-  base += `النية التقريبية للمستخدم (intent): ${intentId}.\n\n`;
-
-  base += `تعليمات الأسلوب:\n`;
-  base += `- إذا كان المستخدم يكتب بالعربية فأجب بالعربية الفصحى السلسة، مع نكهة بسيطة من لهجته فقط إن لزم.\n`;
-  base += `- إذا كان يكتب بالإنجليزية فأجب بإنجليزية واضحة وبسيطة.\n`;
-  base += `- كن محترفًا، هادئًا، محفّزًا دون مبالغة أو وعود غير واقعية.\n`;
-  base += `- ركّز على النقاط العملية القابلة للتطبيق في الأعمال والإنتاجية متى أمكن.\n`;
-  base += `- لا تتجاوز تقريبًا ${MAX_OUTPUT_TOKENS} توكن (حوالي 250–300 كلمة)، واجعل الإجابة مرتبة في فقرات قصيرة.\n`;
-  base += `- لا تذكر هذه التعليمات في الإجابة.\n\n`;
-
-  base += `الآن أجب عن سؤال المستخدم بشكل مباشر ومفيد.\n`;
+  base += `\nاللغة المطلوبة: ${lang}.\n`;
+  base += `قدّم إجابة قصيرة، عملية، ومنظّمة.\n`;
 
   return base;
 }
-
-//
-// ==========================
-//  Gemini AI Caller (FINAL)
-// ==========================
-//
 
 async function callGemini(userText, analysis, bestItem = null) {
   if (!genAI || !GEMINI_API_KEY) {
@@ -275,19 +249,14 @@ async function callGemini(userText, analysis, bestItem = null) {
     topP: 0.9
   };
 
-const modelsToTry = [
-    GEMINI_MODEL_PRIMARY,
-    GEMINI_MODEL_FALLBACK
-];
-
-  for (const modelName of modelsToTry) {
+  for (const modelName of MODELS_TO_TRY) {
     try {
       console.log("🔎 Trying Gemini model:", modelName);
 
       const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction:
-          "أنت نوفا بوت من منصة نوفا لينك. أجب بإيجاز، بأسلوب عربي فصيح عملي، وبلهجة المستخدم عند الحاجة."
+          "أنت نوفا بوت. أجب بجُمل قصيرة، وركّز على الفائدة العملية."
       });
 
       const result = await model.generateContent({
@@ -320,52 +289,23 @@ const modelsToTry = [
   return buildAutomatedFallbackReply(userText);
 }
 
-
-// =============================
-//  Fallback automated replies
-// =============================
-function buildAutomatedFallbackReply(userText) {
-  const fallbackReplies = [
-    "💬 يبدو أن سؤالك يفتح بابًا جديدًا لم نكتب عنه بشكل مباشر في نوفا لينك، لكن هذا النوع من الأسئلة يلهمنا دائمًا لمحتوى جديد.",
-    "✨ سؤالك يستحق مساحة أكبر مما تسمح به هذه اللحظة، وسنعود له لاحقًا في تدوينة مخصصة.",
-    "🤖 يمكنني مساعدتك في أفكار ومقالات قريبة من سؤالك… جرّب إعادة صياغته للحصول على دقة أعلى.",
-    "🔍 لم أجد إجابة دقيقة الآن، لكن يمكنني اقتراح أكثر مقالات نوفا لينك ارتباطًا بالموضوع."
-  ];
-
-  return fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
-}
-
-
-/* =============== منطق الرد النهائي =============== */
+/* =====================================================
+   منطق الرد النهائي
+===================================================== */
 
 function shouldUseAI(intentId) {
   if (!intentId) return true;
-  // لا داعي لاستدعاء AI في تحيات أو اشتراك أو تعاون بحت
   if (intentId === "casual" || intentId === "subscribe" || intentId === "collaboration") {
     return false;
   }
   return true;
 }
 
-/**
- * واجهة الدماغ الرئيسية
- * request متوقع أن يحتوي على:
- * {
- *   message,          // نص سؤال المستخدم
- *   intentId,
- *   confidence,
- *   language,         // "ar" أو "en"
- *   dialectHint,      // مثلا "levant" | "gulf" ...
- *   toneHint,
- *   suggestedCard
- * }
- */
 export async function novaBrainSystem(request = {}) {
   const userText =
     (request.message || request.userMessage || request.text || "").trim();
 
   const intentId = request.intentId || "explore";
-  const language = request.language || "ar";
 
   if (!userText) {
     return {
@@ -374,36 +314,28 @@ export async function novaBrainSystem(request = {}) {
     };
   }
 
-  // 1) تحميل المعرفة
   const kb = await loadKnowledgeBase();
-  let bestMatch = { score: 0, item: null };
+  const { score, item } = kb.length
+    ? findBestMatch(userText, kb)
+    : { score: 0, item: null };
 
-  if (kb.length) {
-    bestMatch = findBestMatch(userText, kb);
-  }
-
-  const { score, item } = bestMatch;
-
-  // 2) تطابق قوي مع مقالة (> 80%) → رد مؤتمت فقط مع رابط
+  // تطابق قوي
   if (item && score >= STRONG_MATCH_THRESHOLD) {
-    const replyHtml = buildStrongMatchReply(item);
     return {
-      reply: replyHtml,
+      reply: buildStrongMatchReply(item),
       actionCard: request.suggestedCard || null
     };
   }
 
-  // 3) تطابق متوسط (65%–80%) → نحاول Gemini + رابط، وإلا قالب مؤتمت مع رابط
-  if (item && score >= MEDIUM_MATCH_THRESHOLD && score < STRONG_MATCH_THRESHOLD) {
+  // تطابق متوسط
+  if (item && score >= MEDIUM_MATCH_THRESHOLD) {
     let replyHtml;
 
     if (shouldUseAI(intentId)) {
       const aiText = await callGemini(userText, request, item);
-      if (aiText) {
-        replyHtml = wrapAiAnswerWithLink(aiText, item);
-      } else {
-        replyHtml = buildMidMatchTemplateReply(item);
-      }
+      replyHtml = aiText
+        ? wrapAiAnswerWithLink(aiText, item)
+        : buildMidMatchTemplateReply(item);
     } else {
       replyHtml = buildMidMatchTemplateReply(item);
     }
@@ -414,27 +346,19 @@ export async function novaBrainSystem(request = {}) {
     };
   }
 
-  // 4) لا يوجد تطابق كافٍ أو لا توجد معرفة
-  //    نحاول Gemini إذا مناسب، وإلا نلجأ للردود المؤتمتة المحفّزة
+  // لا يوجد تطابق
   if (shouldUseAI(intentId)) {
     const aiText = await callGemini(userText, request, null);
     if (aiText) {
-      const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
       return {
-        reply: safe,
+        reply: escapeHtml(aiText).replace(/\n/g, "<br>"),
         actionCard: request.suggestedCard || null
       };
     }
   }
 
-  // فول باك كامل → الردود المؤتمتة من روح v4.8
-  const fallback =
-    intentId === "learn" || intentId === "explore"
-      ? getRandomGenericReply()
-      : buildNoMatchReply();
-
   return {
-    reply: fallback,
+    reply: getRandomGenericReply(),
     actionCard: request.suggestedCard || null
   };
 }
