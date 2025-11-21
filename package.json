@@ -7,9 +7,8 @@
   "scripts": {
     "start": "node server-novalink.js"
     },
-  "dependencies": {
-    "@google/generative-ai": "^0.7.0"
-  }
+"dependencies": {
+  "@google/generative-ai": "^0.10.0"
 }
   "engines": {
     "node": ">=18"
