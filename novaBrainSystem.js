@@ -12,11 +12,11 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const KNOWLEDGE_JSON_URL = process.env.KNOWLEDGE_JSON_URL || "";
 
 // عتبات التطابق مع قاعدة المعرفة
-const STRONG_MATCH_THRESHOLD = 0.8;  // تطابق قوي
+const STRONG_MATCH_THRESHOLD = 0.8;  // تطابق قوي مع تدوينة
 const MEDIUM_MATCH_THRESHOLD = 0.65; // تطابق متوسط
 
-// حد تقريبي لطول الإجابة من Gemini (توكنز)
-const MAX_OUTPUT_TOKENS = 400;
+// حد تقريبي لطول الإجابة من Gemini (نحو 5–7 أسطر)
+const MAX_OUTPUT_TOKENS = 250;
 
 // كاش للمعرفة
 let knowledgeCache = null;
@@ -132,7 +132,7 @@ function findBestMatch(question, items) {
   return { score: bestScore, item: bestItem };
 }
 
-/* =============== ردود مؤتمتة عامة (روح v4.8) =============== */
+/* =============== ردود مؤتمتة عامة (من روح v4.8) =============== */
 
 const genericReplies = [
   `👋 أهلاً بك في نوفا لينك، حيث نؤمن أن الذكاء الاصطناعي ليس تقنية فقط، بل رحلة لاكتشاف قدراتك من جديد.<br>
@@ -208,56 +208,6 @@ function wrapAiAnswerWithLink(aiText, item) {
   );
 }
 
-/* =============== ردود براند ثابتة (نوفا لينك / نوفا بوت) =============== */
-
-const NOVALINK_STORY_REPLY = `
-💡 نوفا لينك هي مدونة عربية مستقلة، وُلدت من رحلة شخصية للخروج من روتين الوظيفة إلى عالم الذكاء الاصطناعي للأعمال.<br><br>
-فكرتها البسيطة:<br>
-أن تُصبح "حلقة الوصل" بينك وبين الأدوات الذكية التي تختصر الوقت، وتزيد إنتاجيتك، وتفتح أمامك فرص دخل جديدة — بدون تعقيد تقني ولا مصطلحات مرعبة.<br><br>
-في نوفا لينك ستجد:<br>
-• مقالات عملية عن أدوات الذكاء الاصطناعي في الأعمال والمشاريع الصغيرة.<br>
-• شروحات هادئة بعيدًا عن المبالغة والتهويل.<br>
-• تركيز على التجارب الحقيقية وما يعمل فعلاً، لا ما يبدو لامعًا فقط.<br><br>
-🔗 <a href="https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk" target="_blank" class="nova-link">اقرأ قصة نشأة نوفا لينك</a>
-`;
-
-const NOVALINK_SERVICES_REPLY = `
-🧩 نوفا لينك بدأت كمدونة محتوى، لكنها تتطور تدريجيًا لتقدّم خدمات عملية حول الذكاء الاصطناعي للأعمال، مثل:<br><br>
-• مساعدة أصحاب المشاريع على اختيار أدوات الذكاء الاصطناعي المناسبة لهم.<br>
-• تصميم تجارب بوتات دردشة مخصّصة للمواقع الصغيرة والمتاجر الإلكترونية.<br>
-• محتوى تعليمي وتطبيقي يركّز على "كيف تستخدم الأدوات" وليس "كيف تنبهر بها".<br><br>
-تطوّر الخدمات يتم على مراحل، حسب احتياج الجمهور والتجارب الواقعية.<br><br>
-🔗 <a href="https://novalink-ai.com/services-khdmat-nwfa-lynk" target="_blank" class="nova-link">تعرّف على خدمات نوفا لينك المتاحة حاليًا</a>
-`;
-
-const NOVABOT_INTRO_REPLY = `
-🤖 نوفا بوت هو مساعد دردشة ذكي تابع لمنصة نوفا لينك.<br><br>
-تم تصميمه ليقوم بثلاثة أدوار رئيسية:<br>
-1) توجيهك نحو المقالات والموارد المناسبة من نوفا لينك.<br>
-2) مساعدتك في فهم كيف يمكن للذكاء الاصطناعي أن يخدم مشروعك أو عملك اليوم.<br>
-3) فتح باب الاستشارة أو التعاون عندما تشعر أن الوقت حان لخطوة عملية أكبر.<br><br>
-نوفا بوت لا يقدّم نصائح قانونية أو طبية، ولا يَعِدك بالثراء السريع. هدفه أن يكون "زميل عمل ذكي" يدعم قرارك، لا أن يفكر عنك بالكامل.<br><br>
-🔗 <a href="https://novalink-ai.com/about-us-althkaa-alastnaay" target="_blank" class="nova-link">تعرّف أكثر على رؤية نوفا لينك</a>
-`;
-
-const GREETING_REPLY = `
-👋 أهلًا وسهلًا بك في نوفا لينك.<br>
-أنا نوفا بوت… مساعدك الذكي لاكتشاف كيف يمكن للذكاء الاصطناعي أن يخدم فكرتك أو مشروعك خطوة بخطوة.<br>
-ابدأ بسؤال بسيط عمّا تريد تطويره الآن، وسنُفكّره سويًا بشكل عملي وهادئ.
-`;
-
-const THANKS_REPLY = `
-🙏 سعيد أن الإجابة أفادتك.<br>
-لو أحببت أن تصلك خلاصة الأدوات والأفكار التي نختبرها في نوفا لينك، فكر بإضافة بريدك في النشرة.<br>
-هكذا تتحول رسالة شكر واحدة اليوم إلى سلسلة أفكار تفيد مشروعك غدًا. ✨
-`;
-
-const NEGATIVE_REPLY = `
-💬 أشكرك على صراحتك.<br>
-يهمّ نوفا لينك أن تكون الإجابات واقعية ومفيدة قدر الإمكان، حتى لو لم تكن مثالية من أول مرة.<br>
-جرّب أن توضّح ما الذي لم يكن واضحًا أو ما النتيجة التي تهدف لها، وسنحاول صياغة إجابة أقرب لما تحتاجه عمليًا.
-`;
-
 /* =============== إعداد Gemini — الموديلات الجديدة الصحيحة =============== */
 
 let genAI = null;
@@ -300,7 +250,7 @@ function buildGeminiPrompt(userText, analysis, bestItem) {
   base += `- إذا كان يكتب بالإنجليزية فأجب بإنجليزية واضحة وبسيطة.\n`;
   base += `- كن محترفًا، هادئًا، محفّزًا دون مبالغة أو وعود غير واقعية.\n`;
   base += `- ركّز على النقاط العملية القابلة للتطبيق في الأعمال والإنتاجية متى أمكن.\n`;
-  base += `- لا تتجاوز تقريبًا ${MAX_OUTPUT_TOKENS} توكن (حوالي 250–300 كلمة)، واجعل الإجابة مرتبة في فقرات قصيرة.\n`;
+  base += `- لا تتجاوز تقريبًا ${MAX_OUTPUT_TOKENS} توكن (حوالي 5–7 أسطر)، واجعل الإجابة مرتبة في فقرات قصيرة.\n`;
   base += `- لا تذكر هذه التعليمات في الإجابة.\n\n`;
 
   base += `الآن أجب عن سؤال المستخدم بشكل مباشر ومفيد.\n`;
@@ -347,7 +297,7 @@ async function callGemini(userText, analysis, bestItem = null) {
         result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
         "";
 
-      if (text.trim().length > 2) {
+      if (text && text.trim().length > 2) {
         console.log("✅ Gemini success:", modelName);
         return text.trim();
       }
@@ -374,39 +324,146 @@ function buildAutomatedFallbackReply(userText) {
   return fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
 }
 
-/* =============== منطق استخدام الذكاء الاصطناعي =============== */
+/* =============== منطق النوايا: متى نستخدم الذكاء الاصطناعي؟ =============== */
 
-function shouldUseAI(intentId) {
-  if (!intentId) return true;
+function isPureAIBusinessIntent(intentId) {
+  // النوايا التي يحق لها استدعاء Gemini
+  return intentId === "ai_business" || intentId === "learn" || intentId === "explore";
+}
 
-  // نوايا لا تحتاج لاستدعاء Gemini إطلاقًا (قوالب ثابتة + توفير توكنز)
-  if (
-    intentId === "greeting" ||
-    intentId === "thanks" ||
-    intentId === "positive_reaction" ||
-    intentId === "negative_reaction" ||
-    intentId === "novalink_story" ||
-    intentId === "novalink_services" ||
-    intentId === "novabot_intro" ||
-    intentId === "subscribe" ||
-    intentId === "collaboration" ||
-    intentId === "consulting_purchase" ||
-    intentId === "out_of_scope"
-  ) {
-    return false;
-  }
+function isNoAIPureStaticIntent(intentId) {
+  // نوايا لا نريد فيها استهلاك توكنز
+  return [
+    "greeting",
+    "gratitude",
+    "positive",
+    "negative",
+    "subscribe",
+    "collaboration",
+    "novalink_story",
+    "novalink_services",
+    "consulting_purchase",
+    "out_of_scope"
+  ].includes(intentId);
+}
 
-  return true;
+/* =============== ردود نوايا ثابتة =============== */
+
+// ترحيب
+function buildGreetingReply() {
+  return (
+    `👋 أهلاً بك في نوفا لينك.<br>` +
+    `أنا نوفا بوت، مساعدك الذكي لاكتشاف أدوات واستراتيجيات الذكاء الاصطناعي التي تخدم مشروعك فعلاً، لا تملأ وقتك ضجيجًا.<br>` +
+    `اسألني عن الذكاء الاصطناعي، تطوير الأعمال، أو كيف تبدأ أول خطوة عملية تناسب وضعك الحالي.`
+  );
+}
+
+// شكر / امتنان
+function buildGratitudeReply() {
+  return (
+    `🙏 سعيد أن الإجابة أفادتك.<br>` +
+    `لو أحببت أن تصلك خلاصة الأدوات والأفكار التي نختبرها في نوفا لينك، فكر بإضافة بريدك في النشرة.<br>` +
+    `هكذا تتحول رسالة شكر اليوم إلى سلسلة أفكار تفيد مشروعك غداً.`
+  );
+}
+
+// مشاعر إيجابية عامة
+function buildPositiveReply() {
+  return (
+    `✨ يسعدني حماسك!<br>` +
+    `فلسفة نوفا لينك بسيطة: خطوة صغيرة كل يوم نحو عمل أذكى وإنتاجية أعمق أفضل من قفزة كبيرة لا تتكرر.<br>` +
+    `اسألني الآن عن جانب واحد تريد تحسينه في مشروعك، ولنبدأ منه بهدوء ووضوح.`
+  );
+}
+
+// مشاعر سلبية / إحباط
+function buildNegativeReply() {
+  return (
+    `💬 أقدّر شعورك تمامًا، فالتعامل مع التغيير والتقنيات الجديدة ليس سهلًا دائمًا.<br>` +
+    `نوفا لينك موجودة لتجعل الذكاء الاصطناعي في صفّك، لا ضدّك.<br>` +
+    `اختر تحديًا واحدًا يزعجك في عملك الآن، واسألني عنه وسنحاول تفكيكه إلى خطوات عملية أبسط.`
+  );
+}
+
+// قصة نوفا لينك
+function buildNovaLinkStoryReply() {
+  return (
+    `🌱 نوفا لينك بدأت كرحلة فردية للانتقال من مسار وظيفي تقليدي إلى عالم الذكاء الاصطناعي، خطوة بخطوة ومع كثير من التجربة والخطأ.<br>` +
+    `الفكرة الأساسية: بناء مساحة عربية تساعدك على استخدام أدوات الذكاء الاصطناعي في عملك ومشاريعك بطريقة عملية، إنسانية، وواقعية بعيدًا عن المبالغات.<br>` +
+    `يمكنك قراءة القصة كاملة في هذه التدوينة:<br>` +
+    `🔗 <a href="https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk" target="_blank" class="nova-link">رحلة فردية في عالم الذكاء الاصطناعي – هكذا بدأت نوفا لينك</a>`
+  );
+}
+
+// خدمات نوفا لينك
+function buildNovaLinkServicesReply() {
+  return (
+    `🧩 نوفا لينك لا تكتفي بالمحتوى، بل تهدف لتقديم خدمات عملية تساعدك على إدخال الذكاء الاصطناعي في مشروعك خطوة بخطوة.<br>` +
+    `من أمثلة ما يمكن تقديمه: تحسين استخدامك لأدوات الذكاء الاصطناعي، بناء بوت دردشة مخصص لعملك، أو مساعدتك في تصميم مسار محتوى وتسويق يعتمد على أدوات ذكية.<br>` +
+    `يمكنك متابعة صفحة الخدمات هنا:<br>` +
+    `🔗 <a href="https://novalink-ai.com/services-khdmat-nwfa-lynk" target="_blank" class="nova-link">خدمات نوفا لينك</a>`
+  );
+}
+
+// تعاون / شراكات
+function buildCollaborationReply(contactEmail) {
+  return (
+    `🤝 نوفا لينك منفتحة على التعاونات المهنية الجادة المرتبطة بالذكاء الاصطناعي للأعمال، سواء رعاية محتوى، ورش عمل، أو مشاريع مشتركة تستهدف رواد الأعمال والمهتمين بالإنتاجية.<br>` +
+    `يمكنك استخدام البطاقة الظاهرة أو إرسال تفاصيل التعاون المقترح عبر البريد: <a href="mailto:${escapeAttr(
+      contactEmail
+    )}" class="nova-link">${escapeHtml(contactEmail)}</a>.`
+  );
+}
+
+// طلب استشارة / شراء خدمة (Consulting / Purchase)
+function buildConsultingPurchaseReply(contactEmail) {
+  return (
+    `📌 طلب استشارة أو شراء خدمة من نوفا لينك خطوة عملية جدًا.<br>` +
+    `فريق نوفا لينك يمكنه مساعدتك في بناء بوت دردشة، تنظيم استخدام الأدوات، أو تصميم مسار عمل ذكي يناسب مشروعك.<br>` +
+    `استخدم البطاقة الظاهرة لحجز استشارة تعريفية قصيرة، وسيتم تجهيز بريد جاهز لتأكيد طلبك، أو تواصل مباشرة عبر: <a href="mailto:${escapeAttr(
+      contactEmail
+    )}" class="nova-link">${escapeHtml(contactEmail)}</a>.`
+  );
+}
+
+// رد خاص بالاشتراك
+function buildSubscribeReply() {
+  return (
+    `📧 الاشتراك في نوفا لينك مناسب إذا كنت تريد جرعة منتظمة من الأفكار العملية، لا سيلًا من الرسائل المكررة.<br>` +
+    `سنرسل لك خلاصة أدوات وتجارب نختبرها فعليًا، مع تركيز على ما يصنع فرقًا حقيقيًا في إنتاجيتك ومشاريعك.`
+  );
+}
+
+// رد out_of_scope (أسئلة طقس/أكل/رياضة...)
+function buildOutOfScopeReply() {
+  return (
+    `💡 نوفا بوت مُصمَّم ليركّز معك على الذكاء الاصطناعي وتطوير الأعمال أكثر من الأسئلة العامة مثل الطقس أو وصف الأكلات 😊.<br>` +
+    `جرّب أن تعيد صياغة سؤالك من زاوية: كيف أستخدم الذكاء الاصطناعي في…؟ أو كيف أطوّر مشروعي في… وسأساعدك بأقصى ما أستطيع.`
+  );
 }
 
 /* =============== واجهة الدماغ الرئيسية =============== */
 
+/**
+ * request متوقع أن يحتوي على:
+ * {
+ *   message,          // نص سؤال المستخدم
+ *   intentId,         // ai_business, greeting, gratitude, collaboration, novalink_story, novalink_services, consulting_purchase, out_of_scope ...
+ *   confidence,
+ *   language,         // "ar" أو "en"
+ *   dialectHint,
+ *   toneHint,
+ *   suggestedCard,
+ *   contactEmail      // اختياري، يمكن أن يأتي من الـ Intent
+ * }
+ */
 export async function novaBrainSystem(request = {}) {
   const userText =
     (request.message || request.userMessage || request.text || "").trim();
 
   const intentId = request.intentId || "explore";
   const language = request.language || "ar";
+  const contactEmail = request.contactEmail || "contact@novalink-ai.com";
 
   if (!userText) {
     return {
@@ -415,92 +472,95 @@ export async function novaBrainSystem(request = {}) {
     };
   }
 
-  // 0) نوايا براند ثابتة (بدون Gemini ولا قاعدة معرفة)
-  if (intentId === "greeting") {
-    return {
-      reply: GREETING_REPLY,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  if (intentId === "thanks" || intentId === "positive_reaction") {
-    return {
-      reply: THANKS_REPLY,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  if (intentId === "negative_reaction") {
-    return {
-      reply: NEGATIVE_REPLY,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  if (intentId === "novalink_story") {
-    return {
-      reply: NOVALINK_STORY_REPLY,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  if (intentId === "novalink_services") {
-    return {
-      reply: NOVALINK_SERVICES_REPLY,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  if (intentId === "novabot_intro") {
-    return {
-      reply: NOVABOT_INTRO_REPLY,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  // 1) تحميل المعرفة
+  // 1) تحميل المعرفة (مرة واحدة ثم من الكاش)
   const kb = await loadKnowledgeBase();
   let bestMatch = { score: 0, item: null };
 
-  if (kb.length) {
+  if (kb.length && isPureAIBusinessIntent(intentId)) {
     bestMatch = findBestMatch(userText, kb);
   }
 
   const { score, item } = bestMatch;
 
-  // 2) تطابق قوي مع مقالة (> 80%) → رد مؤتمت فقط مع رابط
-  if (item && score >= STRONG_MATCH_THRESHOLD) {
-    const replyHtml = buildStrongMatchReply(item);
+  // 2) نوايا ثابتة لا نريد فيها استخدام الذكاء الاصطناعي
+  if (isNoAIPureStaticIntent(intentId)) {
+    let replyHtml = "";
+    let actionCard = null;
+
+    switch (intentId) {
+      case "greeting":
+        replyHtml = buildGreetingReply();
+        break;
+      case "gratitude":
+        replyHtml = buildGratitudeReply();
+        actionCard = "subscribe";
+        break;
+      case "positive":
+        replyHtml = buildPositiveReply();
+        break;
+      case "negative":
+        replyHtml = buildNegativeReply();
+        break;
+      case "subscribe":
+        replyHtml = buildSubscribeReply();
+        actionCard = "subscribe";
+        break;
+      case "collaboration":
+        replyHtml = buildCollaborationReply(contactEmail);
+        actionCard = "collaboration";
+        break;
+      case "novalink_story":
+        replyHtml = buildNovaLinkStoryReply();
+        break;
+      case "novalink_services":
+        replyHtml = buildNovaLinkServicesReply();
+        actionCard = "business_subscribe";
+        break;
+      case "consulting_purchase":
+        replyHtml = buildConsultingPurchaseReply(contactEmail);
+        actionCard = "bot_lead";
+        break;
+      case "out_of_scope":
+      default:
+        replyHtml = buildOutOfScopeReply();
+        break;
+    }
+
     return {
       reply: replyHtml,
-      actionCard: request.suggestedCard || null
+      actionCard: actionCard
     };
   }
 
-  // 3) تطابق متوسط (65%–80%) → نحاول Gemini + رابط، وإلا قالب مؤتمت مع رابط
-  if (item && score >= MEDIUM_MATCH_THRESHOLD && score < STRONG_MATCH_THRESHOLD) {
-    let replyHtml;
+  // 3) نية AI/Business → نظام هجين (معرفة + Gemini)
+  if (isPureAIBusinessIntent(intentId)) {
+    // 3.1 تطابق قوي مع مقالة (> 80%) → رد مؤتمت فقط مع رابط (بدون Gemini)
+    if (item && score >= STRONG_MATCH_THRESHOLD) {
+      const replyHtml = buildStrongMatchReply(item);
+      return {
+        reply: replyHtml,
+        actionCard: request.suggestedCard || null
+      };
+    }
 
-    if (shouldUseAI(intentId)) {
+    // 3.2 تطابق متوسط (65%–80%) → نحاول Gemini + رابط، وإلا قالب مؤتمت مع رابط
+    if (item && score >= MEDIUM_MATCH_THRESHOLD && score < STRONG_MATCH_THRESHOLD) {
+      let replyHtml;
+
       const aiText = await callGemini(userText, request, item);
       if (aiText) {
         replyHtml = wrapAiAnswerWithLink(aiText, item);
       } else {
         replyHtml = buildMidMatchTemplateReply(item);
       }
-    } else {
-      replyHtml = buildMidMatchTemplateReply(item);
+
+      return {
+        reply: replyHtml,
+        actionCard: request.suggestedCard || null
+      };
     }
 
-    return {
-      reply: replyHtml,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  // 4) لا يوجد تطابق كافٍ أو لا توجد معرفة
-  //    نحاول Gemini إذا مناسب، وإلا نلجأ للردود المؤتمتة المحفّزة
-  if (shouldUseAI(intentId)) {
+    // 3.3 لا يوجد تطابق كافٍ أو لا توجد معرفة → نعتمد على Gemini وحده
     const aiText = await callGemini(userText, request, null);
     if (aiText) {
       const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
@@ -509,13 +569,31 @@ export async function novaBrainSystem(request = {}) {
         actionCard: request.suggestedCard || null
       };
     }
+
+    // إذا فشل Gemini بالكامل
+    const fallback =
+      intentId === "learn" || intentId === "explore"
+        ? getRandomGenericReply()
+        : buildNoMatchReply();
+
+    return {
+      reply: fallback,
+      actionCard: request.suggestedCard || null
+    };
   }
 
-  // فول باك كامل → الردود المؤتمتة من روح v4.8
+  // 4) أي نية أخرى غير معرّفة بوضوح → نعاملها كاستكشاف عادي
+  const aiText = await callGemini(userText, request, null);
+  if (aiText) {
+    const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
+    return {
+      reply: safe,
+      actionCard: request.suggestedCard || null
+    };
+  }
+
   const fallback =
-    intentId === "learn" ||
-    intentId === "explore" ||
-    intentId === "out_of_scope"
+    intentId === "learn" || intentId === "explore"
       ? getRandomGenericReply()
       : buildNoMatchReply();
 
