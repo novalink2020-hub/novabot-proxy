@@ -7,7 +7,7 @@ import http from "http";
 import url from "url";
 
 // استدعاء وحدات الذكاء
-import { detectIntent } from "./novaIntentDetector.js";
+import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
 // -------------------------------
@@ -47,7 +47,7 @@ const server = http.createServer(async (req, res) => {
       // ===========================================
       // 1) تحليل اللغة + اللهجة + النية
       // ===========================================
-      const analysis = await detectIntent(userMessage);
+      const analysis = await detectNovaIntent(userMessage);
 
       // analysis يحتوي:
       // { intentId, toneHint, language, dialectHint, suggestedCard }
