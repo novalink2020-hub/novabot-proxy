@@ -255,51 +255,67 @@ function buildGeminiPrompt(userText, analysis, bestItem) {
   return base;
 }
 
+//
+// ==========================
+//  Gemini AI Caller (Fixed)
+// ==========================
+//
 async function callGemini(userText, analysis, bestItem = null) {
-  if (!genAI || !GEMINI_API_KEY) return null;
+  if (!genAI || !GEMINI_API_KEY) {
+    console.log("⚠️ Gemini disabled or missing key.");
+    return null;
+  }
 
   const prompt = buildGeminiPrompt(userText, analysis, bestItem);
 
   const generationConfig = {
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,   // 400 tokens كما اخترت
     temperature: 0.7,
     topP: 0.9
   };
 
-  const modelsToTry = [GEMINI_MODEL_PRIMARY, GEMINI_MODEL_FALLBACK];
+  // ⚡ Flash أولاً → ⚡ Pro → 🎯 fallback text
+  const modelsToTry = [
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro-latest"
+  ];
 
   for (const modelName of modelsToTry) {
     try {
+      console.log("🔎 Trying Gemini model:", modelName);
+
       const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction:
-          "أنت نوفا بوت، مساعد احترافي من منصة نوفا لينك العربية، وظيفتك تقديم إجابات عملية عن الذكاء الاصطناعي وتطبيقاته في الأعمال والإنتاجية."
+          "أنت نوفا بوت من منصة نوفا لينك. أجب بأسلوب عربي فصيح بسيط، بلهجة المستخدم عند الحاجة، مع تركيز عملي واضح."
       });
 
       const result = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }]
-          }
-        ],
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig
       });
 
-      const text = (result.response.text() || "").trim();
-      if (text) return text;
-    } catch (err) {
-      console.error("🔥 Gemini error:", err);
-      const msg = String(err && err.message ? err.message : "");
-      // إذا كان الخطأ 404 جرّب الموديل الآخر، غير ذلك اخرج فوراً
-      if (!(msg.includes("404") || msg.toLowerCase().includes("not found"))) {
-        break;
+      const response =
+        result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        result?.response?.text ||
+        null;
+
+      if (response && response.trim().length > 3) {
+        console.log("✅ Gemini success:", modelName);
+        return response.trim();
       }
+
+    } catch (err) {
+      console.log("🔥 Gemini error on", modelName, "→", err.message);
+      continue; // جرّب الموديل التالي
     }
   }
 
-  return null;
+  // 🎯 fallback النهائي — ردود 4.8 المؤتمتة
+  console.log("⚠️ Gemini full fallback → Automated reply.");
+  return buildAutomatedFallbackReply(userText);
 }
+
 
 /* =============== منطق الرد النهائي =============== */
 
