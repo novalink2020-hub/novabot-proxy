@@ -6,8 +6,11 @@
   "main": "server-novalink.js",
   "scripts": {
     "start": "node server-novalink.js"
-  },
-  "dependencies": {},
+    },
+  "dependencies": {
+    "@google/generative-ai": "^0.7.0"
+  }
+}
   "engines": {
     "node": ">=18"
   },
