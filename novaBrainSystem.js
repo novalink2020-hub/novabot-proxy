@@ -276,10 +276,10 @@ async function callGemini(userText, analysis, bestItem = null) {
   };
 
   // 🔥 موديلات Gemini الصحيحة (v1) — لا يوجد latest ولا beta
-  const modelsToTry = [
-    "gemini-1.5-flash",
-    "gemini-1.5-pro"
-  ];
+const modelsToTry = [
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-pro-latest"
+];
 
   for (const modelName of modelsToTry) {
     try {
