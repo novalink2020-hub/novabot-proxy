@@ -7,6 +7,6 @@
     "start": "node server-novalink.js"
   },
   "dependencies": {
-    "@google/generative-ai": "latest"
+"@google/generative-ai": "^0.3.0"
   }
 }
