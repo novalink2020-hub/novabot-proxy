@@ -1,384 +1,293 @@
 // ===========================================
 // novaIntentDetector.js
-// كاشف النوايا + اللغة + نطاق السؤال (داخل/خارج مجال نوفا لينك)
+// نظام بسيط لاكتشاف النوايا لنوفا بوت
 // By Mohammed Abu Snaina – NOVALINK.AI
 // ===========================================
-// ============= أدوات نصية بسيطة =============
-function normalize(text = "") {
-  return text
+
+/* ============ أدوات مساعدة للنصوص ============ */
+
+function normalizeText(str = "") {
+  return str
     .toLowerCase()
     .replace(/[.,!?؟،"“”()\-_:;«»]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function containsAny(text, keywords = []) {
-  return keywords.some((k) => text.includes(k.toLowerCase()));
+function containsAny(text, list) {
+  return list.some((w) => text.includes(w));
 }
 
-function detectLanguage(raw = "") {
+function detectLanguage(raw) {
+  if (!raw) return "ar";
   const hasArabic = /[\u0600-\u06FF]/.test(raw);
   if (hasArabic) return "ar";
   return "en";
 }
 
-// ============= قواعد النوايا =============
-export async function detectNovaIntent(userMessage = "") {
-  const raw = (userMessage || "").trim();
-  const lang = detectLanguage(raw);
-  const text = normalize(raw);
+function detectDialectHint(text) {
+  if (!text) return null;
+  // لهجة شامية تقريبية
+  if (/[شس]و|هيك|كتير|ليش|زلمة|حابة|حلو كتير|مش/.test(text)) {
+    return "levant";
+  }
+  // خليجي
+  if (/وش|ليه|زود|واجد|هاشتاق|مره حلو/.test(text)) {
+    return "gulf";
+  }
+  // مصري
+  if (/ليه|إزاي|أوي|جامد|تمام أوي|مش قوي/.test(text)) {
+    return "egypt";
+  }
+  return null;
+}
 
-  // احتمال لهجة (تقريبية فقط)
-  const dialectHint = lang === "ar" ? "levant" : null;
+function detectToneHint(text) {
+  if (!text) return "neutral";
+  const t = text;
 
-  // -------- 1) تحيات --------
-  const greetingAr = [
-    "مرحبا",
-    "أهلا",
-    "اهلا",
-    "السلام عليكم",
-    "مساء الخير",
-    "صباح الخير",
-    "هاي",
-    "هلا",
-    "مرحبا نوفا",
-    "هلا نوفا",
-    "كيفك",
-    "كيف الحال",
-    "كيف حالك"
-  ];
-  const greetingEn = [
-    "hi",
-    "hello",
-    "hey",
-    "good morning",
-    "good evening",
-    "good night",
-    "hi nova",
-    "hello nova"
-  ];
+  if (containsAny(t, ["شكرا", "شكرًا", "ممتاز", "رائع", "جميل", "حلو", "رهيب", "thank you", "thanks"])) {
+    return "positive";
+  }
+  if (containsAny(t, ["محبط", "تعبان", "سيء", "سيئ", "متضايق", "ملل", "زهقان", "سيئة", "فاشل", "زعلان", "disappointed", "bad"])) {
+    return "negative";
+  }
+  return "neutral";
+}
 
+/* ============ دالة كشف النوايا ============ */
+
+export async function detectNovaIntent(userMessageRaw = "") {
+  const raw = (userMessageRaw || "").trim();
+  const normalized = normalizeText(raw);
+  const language = detectLanguage(raw);
+  const dialectHint = detectDialectHint(raw);
+  const toneHint = detectToneHint(raw);
+
+  let intentId = "unknown";
+  let confidence = 0.4;
+  let suggestedCard = null;
+
+  // 1) تحيات
   if (
-    (lang === "ar" && containsAny(text, greetingAr)) ||
-    (lang === "en" && containsAny(text, greetingEn))
+    containsAny(normalized, [
+      "مرحبا",
+      "مرحبا بك",
+      "اهلا",
+      "اهلاً",
+      "السلام عليكم",
+      "صباح الخير",
+      "مساء الخير",
+      "هاي",
+      "هلا",
+      "hello",
+      "hi",
+      "hey"
+    ])
   ) {
-    return {
-      intentId: "greeting",
-      confidence: 0.95,
-      language: lang,
-      dialectHint,
-      toneHint: "positive"
-    };
+    intentId = "greeting";
+    confidence = 0.95;
   }
 
-  // -------- 2) كلمات شكر / مدح (إيجابي) --------
-  const positiveAr = [
-    "شكرا",
-    "شكرًا",
-    "شكراً",
-    "شكرا لك",
-    "يعطيك العافية",
-    "يعطيك العافيه",
-    "ممتاز",
-    "رائع",
-    "جميل",
-    "حلو",
-    "ابداع",
-    "خطير",
-    "افدتني",
-    "فدتني",
-    "مفيد جدا",
-    "مفيد جداً"
-  ];
-  const positiveEn = [
-    "thank you",
-    "thanks",
-    "great",
-    "awesome",
-    "perfect",
-    "very helpful",
-    "useful",
-    "you helped me"
-  ];
-
-  if (
-    (lang === "ar" && containsAny(text, positiveAr)) ||
-    (lang === "en" && containsAny(text, positiveEn))
+  // 2) شكر / كلمات إيجابية
+  else if (
+    containsAny(normalized, [
+      "شكرا",
+      "شكراً",
+      "مشكور",
+      "يسلمو",
+      "ممتاز",
+      "رائع",
+      "جميل",
+      "حلو",
+      "سوبر",
+      "top",
+      "great",
+      "awesome",
+      "thanks",
+      "thank you"
+    ])
   ) {
-    return {
-      intentId: "praise",
-      confidence: 0.9,
-      language: lang,
-      dialectHint,
-      toneHint: "positive"
-    };
+    intentId = "thanks_positive";
+    confidence = 0.95;
+    suggestedCard = "subscribe"; // منطق تجاري: من ينبسط من البوت أقرب للاشتراك
   }
 
-  // -------- 3) كلمات سلبية / إحباط --------
-  const negativeAr = [
-    "سيء",
-    "سئ",
-    "مش مفيد",
-    "ما فادني",
-    "غير مفيد",
-    "غلط",
-    "خطأ",
-    "مش حلو",
-    "محبط",
-    "سيئة",
-    "فاشل",
-    "ضعيف",
-    "ردك سيء",
-    "ردك سئ"
-  ];
-  const negativeEn = [
-    "bad",
-    "not helpful",
-    "useless",
-    "wrong answer",
-    "you are wrong",
-    "disappointing",
-    "terrible"
-  ];
-
-  if (
-    (lang === "ar" && containsAny(text, negativeAr)) ||
-    (lang === "en" && containsAny(text, negativeEn))
+  // 3) شعور سلبي / إحباط
+  else if (
+    containsAny(normalized, [
+      "محبط",
+      "تعبان",
+      "مالي خلق",
+      "سيء",
+      "سيئ",
+      "سيئة",
+      "مزعج",
+      "فاشل",
+      "زعلان",
+      "ملان",
+      "ملل",
+      "زهقان",
+      "depressed",
+      "tired",
+      "frustrated"
+    ])
   ) {
-    return {
-      intentId: "complaint",
-      confidence: 0.9,
-      language: lang,
-      dialectHint,
-      toneHint: "negative"
-    };
+    intentId = "negative_mood";
+    confidence = 0.9;
+    suggestedCard = "business_subscribe"; // نعرض عليه محتوى جاد يساعده يطوّر عمله
   }
 
-  // -------- 4) عن نوفا لينك / عن نوفا بوت / الرؤية والرسالة --------
-  const aboutNovaAr = [
-    "ما هي نوفا لينك",
-    "عن نوفا لينك",
-    "تعريف نوفا لينك",
-    "تعرف عن نوفا لينك",
-    "من هي نوفا لينك",
-    "مدونة نوفا لينك",
-    "رؤيتكم",
-    "رؤيتك",
-    "رسالتكم",
-    "رسالتك",
-    "هدف نوفا لينك",
-    "ما هو هدف نوفا لينك",
-    "قصتك مع نوفا لينك",
-    "قصة نوفا لينك",
-    "ليش عملت نوفا لينك",
-    "كيف بدأت نوفا لينك",
-    "نوفا لينك ايش هي",
-    "مين ورا نوفا لينك",
-    "نوفا بوت ايش هو",
-    "تعريف نوفا بوت",
-    "من هو نوفا بوت"
-  ];
-  const aboutNovaEn = [
-    "what is novalink",
-    "about novalink",
-    "about nova link",
-    "what is nova bot",
-    "about novabot",
-    "your story with novalink"
-  ];
-
-  if (
-    (lang === "ar" && containsAny(text, aboutNovaAr)) ||
-    (lang === "en" && containsAny(text, aboutNovaEn))
+  // 4) نية اشتراك في القائمة البريدية / النشرة
+  else if (
+    containsAny(normalized, [
+      "اشترك",
+      "اشتراك",
+      "القائمة البريدية",
+      "النشرة البريدية",
+      "newsletter",
+      "subscribe",
+      "اشترك في",
+      "سجل بريد",
+      "سجّل بريد"
+    ])
   ) {
-    return {
-      intentId: "about_novalink",
-      confidence: 0.95,
-      language: lang,
-      dialectHint,
-      toneHint: "neutral"
-    };
+    intentId = "subscribe";
+    confidence = 0.95;
+    suggestedCard = "subscribe";
   }
 
-  // -------- 5) اشتراك / قائمة بريدية --------
-  const subscribeAr = [
-    "اريد الاشتراك",
-    "اريد اشترك",
-    "اشترك",
-    "اشتراك",
-    "الاشتراك في نوفا لينك",
-    "newsletter",
-    "القائمة البريدية"
-  ];
-  const subscribeEn = ["subscribe", "newsletter", "mailing list"];
-
-  if (
-    (lang === "ar" && containsAny(text, subscribeAr)) ||
-    (lang === "en" && containsAny(text, subscribeEn))
+  // 5) تعاون / شراكة / رعاية محتوى
+  else if (
+    containsAny(normalized, [
+      "تعاون",
+      "شراكة",
+      "برعاية",
+      "sponsor",
+      "sponsorship",
+      "إعلان",
+      "حملة",
+      "collaboration",
+      "partnership",
+      "ورش عمل",
+      "ورشة عمل",
+      "co-create"
+    ])
   ) {
-    return {
-      intentId: "subscribe",
-      confidence: 0.9,
-      language: lang,
-      dialectHint,
-      toneHint: "positive"
-    };
+    intentId = "collaboration";
+    confidence = 0.95;
+    suggestedCard = "collaboration";
   }
 
-  // -------- 6) تعاون / شراكة --------
-  const collabAr = [
-    "شراكة",
-    "تعاون",
-    "رعاية محتوى",
-    "رعاية",
-    "سبونسور",
-    "ورشة عمل",
-    "ورش عمل",
-    "تدريب",
-    "شراكة مع نوفا لينك",
-    "تعاون مع نوفا لينك"
-  ];
-  const collabEn = ["collaboration", "partnership", "sponsorship", "sponsor"];
-
-  if (
-    (lang === "ar" && containsAny(text, collabAr)) ||
-    (lang === "en" && containsAny(text, collabEn))
+  // 6) Consulting / Purchase – استشارة، عرض سعر، شراء خدمات
+  else if (
+    containsAny(normalized, [
+      "استشارة",
+      "استشارات",
+      "جلسة",
+      "جلسة استشارية",
+      "جلسة تطوير",
+      "تطوير أعمال",
+      "business coaching",
+      "عرض سعر",
+      "سعر الخدمة",
+      "تكلفة",
+      "كم السعر",
+      "كم التكلفة",
+      "buy",
+      "purchase",
+      "اشتري",
+      "أشتري",
+      "خدمة مدفوعة",
+      "بوت لموقعي",
+      "بوت لموقعي",
+      "chatbot لموقعي",
+      "عايز بوت",
+      "اريد بوت",
+      "أريد بوت"
+    ])
   ) {
-    return {
-      intentId: "collaboration",
-      confidence: 0.9,
-      language: lang,
-      dialectHint,
-      toneHint: "neutral"
-    };
+    intentId = "consulting";
+    confidence = 0.97;
+    suggestedCard = "bot_lead"; // بطاقة "بوت دردشة لعملك" لالتقاط lead فعلي
   }
 
-  // -------- 7) كلمات تدل أن المستخدم صاحب مشروع / أعمال --------
-  const businessHints = [
-    "مشروعي",
-    "مشروعي الخاص",
-    "مشروع",
-    "بيزنس",
-    "اعمالي",
-    "أعمالي",
-    "تجارة",
-    "متجر",
-    "متجري",
-    "عملي",
-    "العمل الحر",
-    "freelance",
-    "business",
-    "startup",
-    "ريادة اعمال",
-    "ريادة أعمال",
-    "شركة",
-    "شركتي"
-  ];
+  // 7) سؤال عن الذكاء الاصطناعي + الأعمال (المجال الأساسي)
+  else {
+    const aiKeywords = [
+      "ذكاء اصطناعي",
+      "الذكاء الاصطناعي",
+      "ai",
+      "chatgpt",
+      "شات جي بي تي",
+      "جيميني",
+      "gemini",
+      "نوفا بوت",
+      "novabot",
+      "نوفا لينك",
+      "novalink",
+      "أدوات",
+      "ادوات",
+      "أتمتة",
+      "اوتومات",
+      "اوتوميشن",
+      "automation",
+      "روبوت",
+      "روبوت دردشة",
+      "content ai",
+      "توليد محتوى",
+      "murf",
+      "elevenlabs",
+      "daryjat",
+      "voice over",
+      "تسجيل صوتي بالذكاء الاصطناعي"
+    ];
 
-  const aiHints = [
-    "ذكاء اصطناعي",
-    "الذكاء الاصطناعي",
-    "ai",
-    "chatgpt",
-    "جي بي تي",
-    "gpt",
-    "نوفا بوت",
-    "novabot",
-    "ادوات ذكاء",
-    "ادوات الذكاء",
-    "ادوات الذكاء الاصطناعي",
-    "توليد محتوى",
-    "محتوى بالذكاء الاصطناعي",
-    "gpt",
-    "gemini"
-  ];
+    const businessKeywords = [
+      "مشروع",
+      "مشروعي",
+      "بيزنس",
+      "business",
+      "تسويق",
+      "ماركتنغ",
+      "marketing",
+      "مبيعات",
+      "seals",
+      "محتوى تسويقي",
+      "brand",
+      "براند",
+      "ريادة",
+      "ريادة أعمال",
+      "startup",
+      "ستارت اب",
+      "إنتاجية",
+      "productivity",
+      "freelance",
+      "فريلانسر",
+      "خطة محتوى",
+      "خطة تسويق"
+    ];
 
-  const contentHints = [
-    "محتوى",
-    "تسويق",
-    "اعلان",
-    "إعلان",
-    "اعلانات",
-    "حملة اعلانية",
-    "سوشيال ميديا",
-    "instagram",
-    "tiktok",
-    "reels",
-    "فيديوهات قصيرة",
-    "blog",
-    "مدونة",
-    "مقالات",
-    "كتابة"
-  ];
+    const isAiBusiness =
+      containsAny(normalized, aiKeywords) || containsAny(normalized, businessKeywords);
 
-  const isBusinessRelated =
-    containsAny(text, businessHints) ||
-    containsAny(text, aiHints) ||
-    containsAny(text, contentHints);
-
-  // -------- 8) أسئلة خارج النطاق (طقس، طعام، رياضة، أفلام...) --------
-  const outOfScopeKeywords = [
-    "الطقس",
-    "الجو",
-    "درجة الحرارة",
-    "امطار",
-    "مطر",
-    "ثلج",
-    "ريال مدريد",
-    "برشلونة",
-    "كرة القدم",
-    "مباراة",
-    "طبخ",
-    "وصفة",
-    "اكل",
-    "أكل",
-    "أكلات",
-    "رجيم",
-    "دايت",
-    "فيلم",
-    "افلام",
-    "مسلسل",
-    "مسلسلات",
-    "ممثل",
-    "فنان",
-    "اغنية",
-    "أغنية",
-    "سفر",
-    "سياحة",
-    "فنادق",
-    "فندق"
-  ];
-
-  const isOutOfScope = containsAny(text, outOfScopeKeywords);
-
-  if (isOutOfScope && !isBusinessRelated) {
-    // سؤال واضح أنه خارج نطاق نوفا لينك
-    return {
-      intentId: "out_of_scope",
-      confidence: 0.9,
-      language: lang,
-      dialectHint,
-      toneHint: "neutral"
-    };
+    if (isAiBusiness) {
+      intentId = "ai_business";
+      confidence = 0.9;
+      suggestedCard = null; // ممكن لاحقًا نربطها ببطاقات معينة لو حاب
+    } else {
+      intentId = "out_of_scope";
+      confidence = 0.7;
+      suggestedCard = null; // خارج نطاق نوفا لينك → رد تحفيزي فقط
+    }
   }
 
-  // -------- 9) افتراضي: استكشاف / تعلّم داخل نطاق الأعمال أو AI --------
-  if (isBusinessRelated) {
-    return {
-      intentId: "learn",
-      confidence: 0.75,
-      language: lang,
-      dialectHint,
-      toneHint: "neutral"
-    };
-  }
-
-  // -------- 10) في المنطقة الرمادية → تعامل كاستكشاف عام --------
   return {
-    intentId: "explore",
-    confidence: 0.5,
-    language: lang,
+    intentId,
+    confidence,
+    language,
     dialectHint,
-    toneHint: "neutral"
+    toneHint,
+    suggestedCard
   };
 }
