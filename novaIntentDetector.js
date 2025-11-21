@@ -1,683 +1,209 @@
 // ===========================================
-// novaIntentDetector.js
-// كاشف نوايا نوفا بوت (9 نوايا + out_of_scope)
-// By Mohammed Abu Snaina – NOVALINK.AI
+// novaIntentDetector.js (Final v6.9 Production)
+// نوايا نوفا بوت — ذكاء اصطناعي + أعمال + تعريف + تعاون + شراء + اشتراك + انطباعات
 // ===========================================
 
-/**
- * هذا الملف لا يستدعي Gemini مباشرة.
- * مهمته فقط:
- *  - قراءة سؤال المستخدم
- *  - تحديد النية (intentId)
- *  - اقتراح بطاقة (suggestedCard) عند الحاجة
- *  - إرجاع لغة المستخدم، لهجته التقريبية، ونبرة الكلام
- *
- * النوايا الحالية:
- *  - ai_business           → أسئلة الذكاء الاصطناعي + تطوير الأعمال (تشمل التعليق الصوتي)
- *  - learn_ai              → "أريد أن أتعلم الذكاء الاصطناعي" ومسارات التعلم
- *  - subscribe             → اهتمام بالنشرة البريدية / الاشتراك
- *  - collaboration         → تعاون وشراكات
- *  - consulting_purchase   → استشارة / شراء خدمة / بوت لموقعه
- *  - novalink_story        → من أنتم / قصة نوفا لينك / خدمات نوفا لينك
- *  - novabot_info          → ما هو نوفا بوت
- *  - casual                → تحيات / شكر / كلام خفيف
- *  - out_of_scope          → طقس / أكل / رياضة / مواضيع عامة بعيدة
- */
+/* ---------------------------
+   1) كلمات مفتاحية للنوايا
+--------------------------- */
 
-const ARABIC_LETTERS = /[\u0600-\u06FF]/;
+// الذكاء الاصطناعي + تطوير الأعمال
+const AI_BUSINESS = [
+  "ذكاء", "الذكاء الاصطناعي", "ذكاء اصطناعي", "ai", "أداة", "أدوات",
+  "أدوات ذكاء", "أدوات الذكاء", "محتوى", "إنشاء محتوى", "كتابة محتوى",
+  "تطوير", "أطور", "مشروعي", "تطوير مشروع", "تطوير أعمال", "تحسين",
+  "إنتاجية", "رفع الإنتاجية", "أتمتة", "workflow", "خطة", "استراتيجية",
+  "تسويق", "ادارة أعمال", "تحسين سير العمل", "business", "content",
+  "strategy", "startup", "scale", "machine learning", "neural",
+  "voiceover", "تعليق صوتي", "murf", "elevenlabs", "daryjat",
+  "text to speech", "tts", "صوت", "كتابة", "seo", "marketing",
+  "bot", "chatbot", "llm"
+];
 
-// =======================
-// أدوات مساعدة للنصوص
-// =======================
+// تعريف نوفا لينك
+const NOVALINK_INFO = [
+  "نوفا لينك", "ما هي نوفا لينك", "من هي نوفا لينك",
+  "رؤية", "رسالة", "هدف", "قصة", "كيف بدأت", "تعريفكم",
+  "من انتم", "عنكم", "منصة نوفا", "novalink"
+];
 
-function normalizeText(raw = "") {
-  return raw
+// تعريف نوفا بوت
+const NOVABOT_INFO = [
+  "نوفا بوت", "ما هو نوفا بوت", "بوت نوفا", "nova bot",
+  "novabot", "بوت", "مساعد", "chatbot", "bot info"
+];
+
+// التعاون والشراكات
+const COLLABORATION = [
+  "شراكة", "تعاون", "رعاية", "sponsor", "collaboration",
+  "work together", "مشروع مشترك", "cooperate", "partnership"
+];
+
+// الاستشارة / الشراء
+const CONSULTING_PURCHASE = [
+  "اريد بوت", "اريد شراء", "اريد خدمة", "شراء", "سعر",
+  "كم التكلفة", "استشارة", "consultation", "price", "cost",
+  "purchase", "chat bot", "خدمة", "بوت لموقعي", "حجز",
+  "اريد ضم", "اريد مساعد", "اريد تطوير"
+];
+
+// الاشتراك بالنشرة
+const SUBSCRIBE = [
+  "اشترك", "اشتراك", "subscribe", "newsletter",
+  "سجلني", "قائمة بريدية", "اريد نشرة"
+];
+
+// كلمات إيجابية
+const POSITIVE = [
+  "شكرا", "ممتاز", "رائع", "تمام", "great", "thanks", "perfect", "amazing"
+];
+
+// كلمات سلبية
+const NEGATIVE = [
+  "سيء", "مش مضبوط", "مش شغال", "مش راضي", "bad", "error", "not working"
+];
+
+// خارج النطاق (Out Of Scope)
+const OUT_OF_SCOPE = [
+  "طقس", "الطقس", "اكل", "طبخة", "مقلوبة", "وصفة",
+  "رياضة", "مباراة", "لاعب", "فيلم", "مسلسل", "اغنية",
+  "توقعات", "ابراج", "حيوان", "قط", "كلب",
+  "سفر", "طيران", "فندق", "رقم", "شارع"
+];
+
+/* ---------------------------
+   2) Helpers
+--------------------------- */
+
+function normalize(text = "") {
+  return text
     .toLowerCase()
-    .replace(/[\u064B-\u065F]/g, "") // إزالة الحركات
-    .replace(/[.,!?؟،"“”()\-_:;«»[\]{}]/g, " ")
+    .replace(/[.,!?؟،"“”\-_:;()]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function hasAny(text, list) {
-  return list.some((kw) => text.includes(kw));
+function containsAny(text, list) {
+  return list.some((word) => text.includes(word.toLowerCase()));
 }
 
-function detectLanguage(original) {
-  return ARABIC_LETTERS.test(original) ? "ar" : "en";
+/* ---------------------------
+   3) Language Detection
+--------------------------- */
+function detectLanguage(text = "") {
+  const ar = /[\u0600-\u06FF]/;
+  return ar.test(text) ? "ar" : "en";
 }
 
-function detectTone(text) {
-  const positive = [
-    "شكرا",
-    "شكراً",
-    "thanks",
-    "thank you",
-    "يسلمو",
-    "يعطيك العافية",
-    "ممتاز",
-    "رائع",
-    "جميل",
-    "مفيد",
-    "حلو"
-  ];
-  const negative = [
-    "سيء",
-    "سئ",
-    "غلط",
-    "خطأ",
-    "مش مفيد",
-    "ضعيف",
-    "سيئ"
-  ];
-
-  if (hasAny(text, positive)) return "positive";
-  if (hasAny(text, negative)) return "negative";
-  return "neutral";
+function detectDialect(text = "") {
+  const t = normalize(text);
+  if (t.includes("شو") || t.includes("هيك") || t.includes("ليش")) return "levant";
+  if (t.includes("شلون") || t.includes("هالحين")) return "gulf";
+  return "msa";
 }
 
-// =======================
-// دوال تقييم النوايا
-// =======================
+/* ---------------------------
+   4) Intent Detection Core
+--------------------------- */
 
-function scoreCasual(text) {
-  let s = 0;
-  if (
-    hasAny(text, [
-      "مرحبا",
-      "مرحبا ",
-      "اهلا",
-      "أهلا",
-      "اهلاً",
-      "السلام عليكم",
-      "هاي",
-      "هلا",
-      "hi",
-      "hello",
-      "hey"
-    ])
-  ) {
-    s += 2;
-  }
-  if (
-    hasAny(text, [
-      "شكرا",
-      "شكراً",
-      "thanks",
-      "thank you",
-      "thx",
-      "يسلمو",
-      "يعطيك العافية"
-    ])
-  ) {
-    s += 2;
-  }
-  if (text.length <= 20) s += 0.5; // رسائل قصيرة جدًا → غالبًا تحية أو شكر
-  return s;
-}
+export function detectNovaIntent(message = "") {
+  const text = normalize(message);
 
-/**
- * نية الذكاء الاصطناعي + تطوير الأعمال
- * تشمل:
- *  - أسئلة عن AI، أدواته، الإنتاجية، التسويق
- *  - التعليق الصوتي بالذكاء الاصطناعي (مُدمج هنا)
- */
-function scoreAiBusiness(text) {
-  let s = 0;
-
-  const coreAi = [
-    "ذكاء اصطناعي",
-    "الذكاء الاصطناعي",
-    "ai",
-    "chatgpt",
-    "شات جي بي تي",
-    "نموذج لغوي",
-    "نماذج لغوية",
-    "llm",
-    "agent",
-    "agents",
-    "وكلاء ذكيين",
-    "autogpt"
-  ];
-
-  const business = [
-    "مشروعي",
-    "مشروع",
-    "مشاريع",
-    "بزنس",
-    "بيزنس",
-    "اعمالي",
-    "أعمالي",
-    "اعمال",
-    "أعمال",
-    "تسويق",
-    "ماركتنج",
-    "مبيعات",
-    "مبيعاتي",
-    "انشاء محتوى",
-    "تسويق الكتروني",
-    "اعلانات",
-    "اعلان",
-    "landing page",
-    "فانل",
-    "قمع مبيعات"
-  ];
-
-  const productivity = [
-    "إنتاجية",
-    "الانتاجية",
-    "productivity",
-    "أتمتة",
-    "اتمتة",
-    "automation",
-    "workflow",
-    "سير عمل",
-    "روتين",
-    "توفير وقت",
-    "تقليل الجهد"
-  ];
-
-  // كلمات التعليق الصوتي + أدواته → هنا
-  const voiceOver = [
-    "تعليق صوتي",
-    "التعليق الصوتي",
-    "voice over",
-    "voiceover",
-    "voice-over",
-    "تفريغ صوتي",
-    "دبلجة",
-    "دبلجه",
-    "بودكاست",
-    "بودكاستات",
-    "قراءة نص",
-    "نطق النص",
-    "text to speech",
-    "tts",
-    "murf",
-    "مرف",
-    "elevenlabs",
-    "eleven labs",
-    "دارجات",
-    "daryjat",
-    "اصوات",
-    "أصوات",
-    "صوتيات"
-  ];
-
-  const tools = [
-    "ادوات",
-    "أدوات",
-    "tool",
-    "tools",
-    "منصة",
-    "منصات",
-    "خدمة",
-    "خدمات",
-    "saas",
-    "برمجيات",
-    "برنامج"
-  ];
-
-  if (hasAny(text, coreAi)) s += 3;
-  if (hasAny(text, business)) s += 2.5;
-  if (hasAny(text, productivity)) s += 2;
-  if (hasAny(text, tools)) s += 1.5;
-  if (hasAny(text, voiceOver)) s += 2.5;
-
-  // بعض العبارات الشائعة
-  if (
-    hasAny(text, [
-      "طور مشروعي",
-      "تطوير مشروعي",
-      "طور عملي",
-      "تطوير عملي",
-      "استفيد من الذكاء الاصطناعي",
-      "استخدم الذكاء الاصطناعي",
-      "ادوات ذكاء اصطناعي",
-      "أدوات ذكاء اصطناعي"
-    ])
-  ) {
-    s += 2.5;
-  }
-
-  return s;
-}
-
-/**
- * نية تعلم الذكاء الاصطناعي
- */
-function scoreLearnAi(text) {
-  let s = 0;
-
-  if (
-    hasAny(text, [
-      "تعلم",
-      "اتعلم",
-      "أتعلم",
-      "مسار تعلم",
-      "مسار تعلّم",
-      "تعليم",
-      "course",
-      "كورس",
-      "دورة",
-      "دورات",
-      "من الصفر",
-      "ابدا من الصفر",
-      "أبدأ من الصفر"
-    ])
-  ) {
-    s += 1.5;
-  }
-
-  if (
-    hasAny(text, [
-      "تعلم الذكاء الاصطناعي",
-      "اتعلم الذكاء الاصطناعي",
-      "ادخل مجال الذكاء الاصطناعي",
-      "أدخل مجال الذكاء الاصطناعي",
-      "كيف ادخل مجال ai",
-      "كيف ادخل مجال الذكاء الاصطناعي"
-    ])
-  ) {
-    s += 3;
-  }
-
-  return s;
-}
-
-/**
- * نية الاشتراك في النشرة / البريد
- */
-function scoreSubscribe(text) {
-  let s = 0;
-  if (
-    hasAny(text, [
-      "اشترك",
-      "اشتراك",
-      "النشرة",
-      "نشرة بريدية",
-      "newsletter",
-      "subscribe",
-      "بريدي",
-      "بريدك",
-      "ايميل",
-      "email"
-    ])
-  ) {
-    s += 3;
-  }
-  return s;
-}
-
-/**
- * نية التعاون والشراكات
- */
-function scoreCollaboration(text) {
-  let s = 0;
-  if (
-    hasAny(text, [
-      "تعاون",
-      "تعاون ",
-      "شراكة",
-      "شراكه",
-      "partnership",
-      "collaboration",
-      "sponsor",
-      "رعاية محتوى",
-      "رعايه محتوى",
-      "ورشة عمل",
-      "ورش عمل",
-      "ورشه عمل"
-    ])
-  ) {
-    s += 3;
-  }
-  return s;
-}
-
-/**
- * نية الاستشارة / الشراء / بوت لمشروعه
- */
-function scoreConsultingPurchase(text) {
-  let s = 0;
-
-  const priceWords = [
-    "كم السعر",
-    "كم التكلفة",
-    "كم التكلفه",
-    "كم يكلف",
-    "بكم",
-    "السعر",
-    "التكلفة",
-    "التكلفه",
-    "price",
-    "cost",
-    "fee",
-    "كم حقه",
-    "كم حقها"
-  ];
-
-  const consultWords = [
-    "استشارة",
-    "استشاره",
-    "consulting",
-    "session",
-    "جلسة",
-    "جلسه",
-    "جلسة استشارة",
-    "جلسه استشاره",
-    "استشارة مدفوعة",
-    "استشاره مدفوعه"
-  ];
-
-  const botWords = [
-    "بوت",
-    "شات بوت",
-    "chatbot",
-    "بوت ذكاء اصطناعي",
-    "بوت للعميل",
-    "بوت لموقعي",
-    "بوت على موقعي",
-    "بوت على الموقع",
-    "بوت لخدمة العملاء",
-    "nova bot",
-    "novabot",
-    "نوفا بوت"
-  ];
-
-  if (hasAny(text, priceWords)) s += 3;
-  if (hasAny(text, consultWords)) s += 3;
-  if (hasAny(text, botWords)) s += 3;
-
-  // عبارات قوية تدل على نية شراء / استشارة
-  if (
-    hasAny(text, [
-      "اريد بوت",
-      "بدي بوت",
-      "اريد انشاء بوت",
-      "اريد بوت ذكاء اصطناعي",
-      "أريد بوت",
-      "أريد شات بوت",
-      "اريد استشارة",
-      "أريد استشارة",
-      "اريد جلسة",
-      "أريد جلسة"
-    ])
-  ) {
-    s += 2.5;
-  }
-
-  return s;
-}
-
-/**
- * نية قصة نوفا لينك / من أنتم / الخدمات
- */
-function scoreNovaLinkStory(text) {
-  let s = 0;
-
-  if (
-    hasAny(text, [
-      "من انتم",
-      "من أنتم",
-      "من تكونون",
-      "شو هي نوفا لينك",
-      "ما هي نوفا لينك",
-      "عن نوفا لينك",
-      "novalink",
-      "nova link",
-      "novalink ai"
-    ])
-  ) {
-    s += 3;
-  }
-
-  if (
-    hasAny(text, [
-      "قصة نوفا لينك",
-      "قصتك",
-      "قصتي",
-      "رحلتك",
-      "رحلتي",
-      "كيف بدأت نوفا لينك",
-      "كيف بدات نوفا لينك"
-    ])
-  ) {
-    s += 3;
-  }
-
-  if (
-    hasAny(text, [
-      "خدمات نوفا لينك",
-      "ما هي خدمات نوفا لينك",
-      "شو خدمات نوفا لينك",
-      "services novalink",
-      "nova services"
-    ])
-  ) {
-    s += 2;
-  }
-
-  return s;
-}
-
-/**
- * نية معلومات عن نوفا بوت نفسه
- */
-function scoreNovaBotInfo(text) {
-  let s = 0;
-  if (hasAny(text, ["نوفا بوت", "nova bot", "novabot"])) {
-    s += 3;
-  }
-  if (
-    hasAny(text, [
-      "ما هو نوفا بوت",
-      "من هو نوفا بوت",
-      "شو هو نوفا بوت",
-      "تعرف عن نوفا بوت"
-    ])
-  ) {
-    s += 2;
-  }
-  return s;
-}
-
-/**
- * نية out_of_scope: أكل / طقس / رياضة / أشياء عامة بعيدة
- */
-function scoreOutOfScope(text) {
-  let s = 0;
-
-  const food = [
-    "مقلوبة",
-    "كبسة",
-    "منسف",
-    "بيتزا",
-    "شاورما",
-    "برجر",
-    "كباب",
-    "كعك",
-    "حلويات",
-    "طبخة",
-    "اطباق",
-    "اكل",
-    "أكل",
-    "وجبة",
-    "وصفات",
-    "وصفة"
-  ];
-
-  const weather = [
-    "طقس",
-    "الطقس",
-    "weather",
-    "درجة الحرارة",
-    "حرارة",
-    "حر",
-    "برد",
-    "ثلج",
-    "مطر",
-    "امطار",
-    "أمطار"
-  ];
-
-  const sports = [
-    "مباراة",
-    "نتيجة مباراة",
-    "برشلونة",
-    "ريال مدريد",
-    "كرة قدم",
-    "كورة",
-    "كورة قدم",
-    "دوري",
-    "رونالدو",
-    "ميسي"
-  ];
-
-  if (hasAny(text, food)) s += 2;
-  if (hasAny(text, weather)) s += 2;
-  if (hasAny(text, sports)) s += 2;
-
-  return s;
-}
-
-// =======================
-// الدالة الرئيسية
-// =======================
-
-export async function detectNovaIntent(message = "") {
-  const original = (message || "").trim();
-  if (!original) {
-    return {
-      intentId: "casual",
-      confidence: 0,
-      language: "ar",
-      dialectHint: "levant",
-      toneHint: "neutral",
-      suggestedCard: null
-    };
-  }
-
-  const lang = detectLanguage(original);
-  const text = normalizeText(original);
-  const toneHint = detectTone(text);
-  const dialectHint = lang === "ar" ? "levant" : null;
-
-  // حساب السكور لكل نية
-  const scores = {
-    casual: scoreCasual(text),
-    ai_business: scoreAiBusiness(text),
-    learn_ai: scoreLearnAi(text),
-    subscribe: scoreSubscribe(text),
-    collaboration: scoreCollaboration(text),
-    consulting_purchase: scoreConsultingPurchase(text),
-    novalink_story: scoreNovaLinkStory(text),
-    novabot_info: scoreNovaBotInfo(text),
-    out_of_scope: scoreOutOfScope(text)
-  };
-
-  // منطق خاص للرسائل القصيرة جدًا (تحيات/شكر)
-  if (scores.casual >= 2 && original.length <= 30) {
-    return {
-      intentId: "casual",
-      confidence: 0.9,
-      language: lang,
-      dialectHint,
-      toneHint,
-      suggestedCard: null
-    };
-  }
-
-  // اختيار أفضل نية (باستثناء out_of_scope مؤقتًا)
-  const intentKeys = Object.keys(scores).filter(
-    (k) => k !== "out_of_scope"
-  );
-
-  let bestIntent = "explore";
-  let bestScore = 0;
-
-  for (const key of intentKeys) {
-    if (scores[key] > bestScore) {
-      bestScore = scores[key];
-      bestIntent = key;
-    }
-  }
-
-  const outOfScopeScore = scores.out_of_scope;
-
-  // إذا لا توجد نية قوية و out_of_scope عالي → نية خارج النطاق
-  if (bestScore < 1 && outOfScopeScore >= 1.5) {
+  // 1) Out of scope → فورا
+  if (containsAny(text, OUT_OF_SCOPE)) {
     return {
       intentId: "out_of_scope",
-      confidence: 0.8,
-      language: lang,
-      dialectHint,
-      toneHint,
-      suggestedCard: null
+      confidence: 0.95,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
     };
   }
 
-  // إذا لا توجد نية واضحة إطلاقًا → explore عام
-  if (bestScore < 1 && outOfScopeScore < 1.5) {
+  // 2) Positive
+  if (containsAny(text, POSITIVE)) {
     return {
-      intentId: "explore",
-      confidence: 0.4,
-      language: lang,
-      dialectHint,
-      toneHint,
-      suggestedCard: null
+      intentId: "positive",
+      confidence: 0.9,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
     };
   }
 
-  // تحويل أسماء النوايا الداخلية إلى intentId نهائي
-  let intentId = bestIntent;
-  let suggestedCard = null;
-
-  switch (bestIntent) {
-    case "ai_business":
-      intentId = "ai_business";
-      break;
-    case "learn_ai":
-      intentId = "learn";
-      break;
-    case "subscribe":
-      intentId = "subscribe";
-      suggestedCard = "subscribe";
-      break;
-    case "collaboration":
-      intentId = "collaboration";
-      suggestedCard = "collaboration";
-      break;
-    case "consulting_purchase":
-      intentId = "consulting_purchase";
-      // هذه النية مرتبطة ببطاقة bot_lead في الواجهة
-      suggestedCard = "bot_lead";
-      break;
-    case "novalink_story":
-      intentId = "novalink_story";
-      break;
-    case "novabot_info":
-      intentId = "novabot_info";
-      break;
-    case "casual":
-      intentId = "casual";
-      break;
-    default:
-      intentId = "explore";
-      break;
+  // 3) Negative
+  if (containsAny(text, NEGATIVE)) {
+    return {
+      intentId: "negative",
+      confidence: 0.9,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
   }
 
-  const confidence = Math.max(
-    0.3,
-    Math.min(1, bestScore / 4)
-  );
+  // 4) Subscription
+  if (containsAny(text, SUBSCRIBE)) {
+    return {
+      intentId: "subscribe",
+      confidence: 0.92,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
+  }
 
+  // 5) Collaboration / Partnership
+  if (containsAny(text, COLLABORATION)) {
+    return {
+      intentId: "collaboration",
+      confidence: 0.92,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
+  }
+
+  // 6) Consulting / Purchase
+  if (containsAny(text, CONSULTING_PURCHASE)) {
+    return {
+      intentId: "consult_purchase",
+      confidence: 0.94,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
+  }
+
+  // 7) NovaLink Info
+  if (containsAny(text, NOVALINK_INFO)) {
+    return {
+      intentId: "novalink_info",
+      confidence: 0.93,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
+  }
+
+  // 8) NovaBot Info
+  if (containsAny(text, NOVABOT_INFO)) {
+    return {
+      intentId: "novabot_info",
+      confidence: 0.93,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
+  }
+
+  // 9) AI / Business (أهم نية)
+  if (containsAny(text, AI_BUSINESS)) {
+    return {
+      intentId: "ai_business",
+      confidence: 0.96,
+      language: detectLanguage(message),
+      dialectHint: detectDialect(message)
+    };
+  }
+
+  // 10) Default → explore
   return {
-    intentId,
-    confidence,
-    language: lang,
-    dialectHint,
-    toneHint,
-    suggestedCard
+    intentId: "explore",
+    confidence: 0.5,
+    language: detectLanguage(message),
+    dialectHint: detectDialect(message)
   };
 }
