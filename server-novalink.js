@@ -12,7 +12,7 @@ import { novaBrainSystem } from "./novaBrainSystem.js";
 // -------------------------------
 //  إعدادات السيرفر
 // -------------------------------
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 const server = http.createServer(async (req, res) => {
   // إعداد الـ CORS للواجهة
@@ -21,7 +21,7 @@ const server = http.createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   // -------------------------------
-  // Health Check for Render
+  // Health Check (GET /)
   // -------------------------------
   if (req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -66,22 +66,16 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: "Empty message" }));
       }
 
-      // ===========================================
       // 1) تحليل النية + اللغة + اللهجة
-      // ===========================================
       const analysis = await detectNovaIntent(userMessage);
 
-      // ===========================================
       // 2) إرسال كل شيء للدماغ
-      // ===========================================
       const brainReply = await novaBrainSystem({
         message: userMessage,
         ...analysis
       });
 
-      // ===========================================
       // 3) إرسال الرد للواجهة
-      // ===========================================
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
         JSON.stringify({
