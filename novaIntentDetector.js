@@ -1,195 +1,384 @@
+// ===========================================
 // novaIntentDetector.js
-// Simple rule-based intent + language/dialect detector for NovaBot (NOVALINK.AI)
-
-const AR_LETTERS_REGEX = /[\u0600-\u06FF]/;
-
-// =====================
-// كشف اللغة
-// =====================
-export function detectLanguage(text) {
-  const hasAr = AR_LETTERS_REGEX.test(text);
-  const hasEn = /[a-zA-Z]/.test(text);
-
-  if (hasAr && !hasEn) return "ar";
-  if (hasEn && !hasAr) return "en";
-
-  const arCount = (text.match(AR_LETTERS_REGEX) || []).length;
-  const enCount = (text.match(/[a-zA-Z]/g) || []).length;
-
-  if (arCount === 0 && enCount === 0) return "ar";
-  return arCount >= enCount ? "ar" : "en";
+// كاشف النوايا + اللغة + نطاق السؤال (داخل/خارج مجال نوفا لينك)
+// By Mohammed Abu Snaina – NOVALINK.AI
+// ===========================================
+// ============= أدوات نصية بسيطة =============
+function normalize(text = "") {
+  return text
+    .toLowerCase()
+    .replace(/[.,!?؟،"“”()\-_:;«»]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-// =====================
-// كشف اللهجة العربية
-// =====================
-export function detectArabicDialect(text) {
-  const t = text.replace(/\s+/g, " ").toLowerCase();
-
-  if (/\b(يا عم|يا راجل|إزيك|ازيك|عامل ايه|مش كده|برضه)\b/.test(t)) return "masri";
-  if (/\b(شلونك|شخبارك|يا رجال|ياخي|وش السالفة|الحين|هالحين)\b/.test(t)) return "gulf";
-  if (/\b(شو|هيك|ليه لأ|كتير|هسا|لسا|إيمتى)\b/.test(t)) return "levant";
-  if (/\b(بزاف|واش|برشا|تو|ديما|عفاك)\b/.test(t)) return "maghrebi";
-
-  return null;
+function containsAny(text, keywords = []) {
+  return keywords.some((k) => text.includes(k.toLowerCase()));
 }
 
-// =====================
-// نبرة الرد
-// =====================
-function chooseTone(intentId) {
-  switch (intentId) {
-    case "learn":
-    case "explore":
-      return "friendly_explainer";
-    case "improve_business":
-    case "buy_service":
-      return "business_coach";
-    case "tools_discounts":
-      return "deal_guide";
-    case "collaboration":
-      return "partner_mode";
-    case "subscribe":
-      return "soft_invite";
-    case "casual":
-    default:
-      return "light_conversation";
-  }
+function detectLanguage(raw = "") {
+  const hasArabic = /[\u0600-\u06FF]/.test(raw);
+  if (hasArabic) return "ar";
+  return "en";
 }
 
-// =====================
-// كشف النية
-// =====================
-export function detectNovaIntent(rawText, options = {}) {
-  const text = (rawText || "").trim();
-  const lower = text.toLowerCase();
+// ============= قواعد النوايا =============
+export async function detectNovaIntent(userMessage = "") {
+  const raw = (userMessage || "").trim();
+  const lang = detectLanguage(raw);
+  const text = normalize(raw);
 
-  const language = detectLanguage(text);
-  const dialectHint = language === "ar" ? detectArabicDialect(text) : null;
+  // احتمال لهجة (تقريبية فقط)
+  const dialectHint = lang === "ar" ? "levant" : null;
 
-  // --- نوايا ---
-  const greetingsAr = /(مرحبا|اهلاً|سلام|مساء الخير|صباح الخير|هلا)/i;
-  const thanksAr = /(شكراً|مشكور|يسلمو|يعطيك العافية)/i;
-  const greetingsEn = /\b(hi|hello|hey|good (morning|evening|afternoon))\b/i;
-  const thanksEn = /\b(thanks|thank you|thx)\b/i;
+  // -------- 1) تحيات --------
+  const greetingAr = [
+    "مرحبا",
+    "أهلا",
+    "اهلا",
+    "السلام عليكم",
+    "مساء الخير",
+    "صباح الخير",
+    "هاي",
+    "هلا",
+    "مرحبا نوفا",
+    "هلا نوفا",
+    "كيفك",
+    "كيف الحال",
+    "كيف حالك"
+  ];
+  const greetingEn = [
+    "hi",
+    "hello",
+    "hey",
+    "good morning",
+    "good evening",
+    "good night",
+    "hi nova",
+    "hello nova"
+  ];
 
-  if (greetingsAr.test(text) || greetingsEn.test(lower) || thanksAr.test(text) || thanksEn.test(lower)) {
+  if (
+    (lang === "ar" && containsAny(text, greetingAr)) ||
+    (lang === "en" && containsAny(text, greetingEn))
+  ) {
     return {
-      intentId: "casual",
+      intentId: "greeting",
+      confidence: 0.95,
+      language: lang,
+      dialectHint,
+      toneHint: "positive"
+    };
+  }
+
+  // -------- 2) كلمات شكر / مدح (إيجابي) --------
+  const positiveAr = [
+    "شكرا",
+    "شكرًا",
+    "شكراً",
+    "شكرا لك",
+    "يعطيك العافية",
+    "يعطيك العافيه",
+    "ممتاز",
+    "رائع",
+    "جميل",
+    "حلو",
+    "ابداع",
+    "خطير",
+    "افدتني",
+    "فدتني",
+    "مفيد جدا",
+    "مفيد جداً"
+  ];
+  const positiveEn = [
+    "thank you",
+    "thanks",
+    "great",
+    "awesome",
+    "perfect",
+    "very helpful",
+    "useful",
+    "you helped me"
+  ];
+
+  if (
+    (lang === "ar" && containsAny(text, positiveAr)) ||
+    (lang === "en" && containsAny(text, positiveEn))
+  ) {
+    return {
+      intentId: "praise",
       confidence: 0.9,
-      language,
+      language: lang,
       dialectHint,
-      toneHint: chooseTone("casual"),
-      suggestedCard: null
+      toneHint: "positive"
     };
   }
 
-  const collabAr = /(تعاون|رعاية محتوى|شراكة|ندوة|ورشة|فعالية)/i;
-  const collabEn = /\b(collaborat(e|ion)|sponsorship|partner(ship)?)\b/i;
+  // -------- 3) كلمات سلبية / إحباط --------
+  const negativeAr = [
+    "سيء",
+    "سئ",
+    "مش مفيد",
+    "ما فادني",
+    "غير مفيد",
+    "غلط",
+    "خطأ",
+    "مش حلو",
+    "محبط",
+    "سيئة",
+    "فاشل",
+    "ضعيف",
+    "ردك سيء",
+    "ردك سئ"
+  ];
+  const negativeEn = [
+    "bad",
+    "not helpful",
+    "useless",
+    "wrong answer",
+    "you are wrong",
+    "disappointing",
+    "terrible"
+  ];
 
-  if (collabAr.test(text) || collabEn.test(lower)) {
+  if (
+    (lang === "ar" && containsAny(text, negativeAr)) ||
+    (lang === "en" && containsAny(text, negativeEn))
+  ) {
     return {
-      intentId: "collaboration",
+      intentId: "complaint",
       confidence: 0.9,
-      language,
+      language: lang,
       dialectHint,
-      toneHint: chooseTone("collaboration"),
-      suggestedCard: "collaboration"
+      toneHint: "negative"
     };
   }
 
-  const buyAr = /(بوت|شات بوت|سعر البوت|تكلفة الخدمة|كم سعر)/i;
-  const buyEn = /\b(chatbot|ai bot|bot price|custom bot)\b/i;
+  // -------- 4) عن نوفا لينك / عن نوفا بوت / الرؤية والرسالة --------
+  const aboutNovaAr = [
+    "ما هي نوفا لينك",
+    "عن نوفا لينك",
+    "تعريف نوفا لينك",
+    "تعرف عن نوفا لينك",
+    "من هي نوفا لينك",
+    "مدونة نوفا لينك",
+    "رؤيتكم",
+    "رؤيتك",
+    "رسالتكم",
+    "رسالتك",
+    "هدف نوفا لينك",
+    "ما هو هدف نوفا لينك",
+    "قصتك مع نوفا لينك",
+    "قصة نوفا لينك",
+    "ليش عملت نوفا لينك",
+    "كيف بدأت نوفا لينك",
+    "نوفا لينك ايش هي",
+    "مين ورا نوفا لينك",
+    "نوفا بوت ايش هو",
+    "تعريف نوفا بوت",
+    "من هو نوفا بوت"
+  ];
+  const aboutNovaEn = [
+    "what is novalink",
+    "about novalink",
+    "about nova link",
+    "what is nova bot",
+    "about novabot",
+    "your story with novalink"
+  ];
 
-  if (buyAr.test(text) || buyEn.test(lower)) {
+  if (
+    (lang === "ar" && containsAny(text, aboutNovaAr)) ||
+    (lang === "en" && containsAny(text, aboutNovaEn))
+  ) {
     return {
-      intentId: "buy_service",
-      confidence: 0.9,
-      language,
+      intentId: "about_novalink",
+      confidence: 0.95,
+      language: lang,
       dialectHint,
-      toneHint: chooseTone("buy_service"),
-      suggestedCard: "bot_lead"
+      toneHint: "neutral"
     };
   }
 
-  const improveBizAr = /(تطوير|زيادة المبيعات|مشروعي|متجر إلكتروني|خطة عمل|ماركتينج)/i;
-  const improveBizEn = /\b(grow my business|increase sales|business strategy)\b/i;
+  // -------- 5) اشتراك / قائمة بريدية --------
+  const subscribeAr = [
+    "اريد الاشتراك",
+    "اريد اشترك",
+    "اشترك",
+    "اشتراك",
+    "الاشتراك في نوفا لينك",
+    "newsletter",
+    "القائمة البريدية"
+  ];
+  const subscribeEn = ["subscribe", "newsletter", "mailing list"];
 
-  if (improveBizAr.test(text) || improveBizEn.test(lower)) {
-    return {
-      intentId: "improve_business",
-      confidence: 0.85,
-      language,
-      dialectHint,
-      toneHint: chooseTone("improve_business"),
-      suggestedCard: "business_subscribe"
-    };
-  }
-
-  const toolsAr = /(أدوات|بديل|بدائل|مقارنة أدوات)/i;
-  const discountAr = /(خصم|كود خصم|كوبون|عرض خاص)/i;
-  const toolsEn = /\b(ai tools?|alternatives?)\b/i;
-  const discountEn = /\b(discount|coupon|deal|offer)\b/i;
-
-  if (discountAr.test(text) || discountEn.test(lower) || toolsAr.test(text) || toolsEn.test(lower)) {
-    return {
-      intentId: "tools_discounts",
-      confidence: 0.85,
-      language,
-      dialectHint,
-      toneHint: chooseTone("tools_discounts"),
-      suggestedCard: null
-    };
-  }
-
-  const subscribeAr = /(اشترك|اشتراك|نشرة بريدية|newsletter)/i;
-  const subscribeEn = /\b(subscribe|newsletter)\b/i;
-
-  if (subscribeAr.test(text) || subscribeEn.test(lower)) {
+  if (
+    (lang === "ar" && containsAny(text, subscribeAr)) ||
+    (lang === "en" && containsAny(text, subscribeEn))
+  ) {
     return {
       intentId: "subscribe",
       confidence: 0.9,
-      language,
+      language: lang,
       dialectHint,
-      toneHint: chooseTone("subscribe"),
-      suggestedCard: "subscribe"
+      toneHint: "positive"
     };
   }
 
-  const learnAr = /(اشرح|تعلم|ما هو الذكاء الاصطناعي|كيف يعمل)/i;
-  const learnEn = /\b(what is ai|explain|learn about ai)\b/i;
+  // -------- 6) تعاون / شراكة --------
+  const collabAr = [
+    "شراكة",
+    "تعاون",
+    "رعاية محتوى",
+    "رعاية",
+    "سبونسور",
+    "ورشة عمل",
+    "ورش عمل",
+    "تدريب",
+    "شراكة مع نوفا لينك",
+    "تعاون مع نوفا لينك"
+  ];
+  const collabEn = ["collaboration", "partnership", "sponsorship", "sponsor"];
 
-  if (learnAr.test(text) || learnEn.test(lower)) {
+  if (
+    (lang === "ar" && containsAny(text, collabAr)) ||
+    (lang === "en" && containsAny(text, collabEn))
+  ) {
+    return {
+      intentId: "collaboration",
+      confidence: 0.9,
+      language: lang,
+      dialectHint,
+      toneHint: "neutral"
+    };
+  }
+
+  // -------- 7) كلمات تدل أن المستخدم صاحب مشروع / أعمال --------
+  const businessHints = [
+    "مشروعي",
+    "مشروعي الخاص",
+    "مشروع",
+    "بيزنس",
+    "اعمالي",
+    "أعمالي",
+    "تجارة",
+    "متجر",
+    "متجري",
+    "عملي",
+    "العمل الحر",
+    "freelance",
+    "business",
+    "startup",
+    "ريادة اعمال",
+    "ريادة أعمال",
+    "شركة",
+    "شركتي"
+  ];
+
+  const aiHints = [
+    "ذكاء اصطناعي",
+    "الذكاء الاصطناعي",
+    "ai",
+    "chatgpt",
+    "جي بي تي",
+    "gpt",
+    "نوفا بوت",
+    "novabot",
+    "ادوات ذكاء",
+    "ادوات الذكاء",
+    "ادوات الذكاء الاصطناعي",
+    "توليد محتوى",
+    "محتوى بالذكاء الاصطناعي",
+    "gpt",
+    "gemini"
+  ];
+
+  const contentHints = [
+    "محتوى",
+    "تسويق",
+    "اعلان",
+    "إعلان",
+    "اعلانات",
+    "حملة اعلانية",
+    "سوشيال ميديا",
+    "instagram",
+    "tiktok",
+    "reels",
+    "فيديوهات قصيرة",
+    "blog",
+    "مدونة",
+    "مقالات",
+    "كتابة"
+  ];
+
+  const isBusinessRelated =
+    containsAny(text, businessHints) ||
+    containsAny(text, aiHints) ||
+    containsAny(text, contentHints);
+
+  // -------- 8) أسئلة خارج النطاق (طقس، طعام، رياضة، أفلام...) --------
+  const outOfScopeKeywords = [
+    "الطقس",
+    "الجو",
+    "درجة الحرارة",
+    "امطار",
+    "مطر",
+    "ثلج",
+    "ريال مدريد",
+    "برشلونة",
+    "كرة القدم",
+    "مباراة",
+    "طبخ",
+    "وصفة",
+    "اكل",
+    "أكل",
+    "أكلات",
+    "رجيم",
+    "دايت",
+    "فيلم",
+    "افلام",
+    "مسلسل",
+    "مسلسلات",
+    "ممثل",
+    "فنان",
+    "اغنية",
+    "أغنية",
+    "سفر",
+    "سياحة",
+    "فنادق",
+    "فندق"
+  ];
+
+  const isOutOfScope = containsAny(text, outOfScopeKeywords);
+
+  if (isOutOfScope && !isBusinessRelated) {
+    // سؤال واضح أنه خارج نطاق نوفا لينك
+    return {
+      intentId: "out_of_scope",
+      confidence: 0.9,
+      language: lang,
+      dialectHint,
+      toneHint: "neutral"
+    };
+  }
+
+  // -------- 9) افتراضي: استكشاف / تعلّم داخل نطاق الأعمال أو AI --------
+  if (isBusinessRelated) {
     return {
       intentId: "learn",
-      confidence: 0.8,
-      language,
-      dialectHint,
-      toneHint: chooseTone("learn"),
-      suggestedCard: null
-    };
-  }
-
-  const exploreAr = /(دلني|اقتراحات|أفكار|أين أبدأ)/i;
-  const exploreEn = /\b(where do i start|suggestions|ideas)\b/i;
-
-  if (exploreAr.test(text) || exploreEn.test(lower)) {
-    return {
-      intentId: "explore",
       confidence: 0.75,
-      language,
+      language: lang,
       dialectHint,
-      toneHint: chooseTone("explore"),
-      suggestedCard: null
+      toneHint: "neutral"
     };
   }
 
+  // -------- 10) في المنطقة الرمادية → تعامل كاستكشاف عام --------
   return {
     intentId: "explore",
     confidence: 0.5,
-    language,
+    language: lang,
     dialectHint,
-    toneHint: chooseTone("explore"),
-    suggestedCard: null
+    toneHint: "neutral"
   };
 }
