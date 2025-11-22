@@ -9,6 +9,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 /* ================= إعدادات عامة ================= */
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
+
 // هذا الـ JSON يكون ناتج دمج: sitemap + ملف Google Drive عبر generate-knowledge.js
 const KNOWLEDGE_JSON_URL = process.env.KNOWLEDGE_JSON_URL || "";
 
@@ -133,7 +134,7 @@ function findBestMatch(question, items) {
   return { score: bestScore, item: bestItem };
 }
 
-/* =============== ردود مؤتمتة (روح v4.8) =============== */
+/* =============== ردود مؤتمتة عامة (روح v4.8) =============== */
 
 const genericReplies = [
   `👋 أهلاً بك في نوفا لينك، حيث نؤمن أن الذكاء الاصطناعي ليس تقنية فقط، بل رحلة لاكتشاف قدراتك من جديد.<br>
@@ -326,26 +327,85 @@ function buildAutomatedFallbackReply(userText) {
 }
 
 /* =============== منطق استخدام الذكاء الاصطناعي =============== */
-
-// هنا نمنع استدعاء Gemini لنوايا معينة + أي شيء خارج نطاق العمل والـ AI
+/**
+ * سياسة واضحة:
+ * - فقط intentId === "ai_business" يستدعي Gemini.
+ * - أي intent آخر → ردود ثابتة، بدون تكلفة توكنز.
+ */
 function shouldUseAI(intentId) {
-  if (!intentId) return true;
+  return intentId === "ai_business";
+}
 
-  const blockedIntents = new Set([
-    "greeting",
-    "thanks_positive",
-    "thanks_negative",
-    "subscribe",
-    "collaboration",
-    "casual",
-    "novalink_story",
-    "novalink_services",
-    "novabot_info",
-    "consulting_purchase",
-    "out_of_scope"
-  ]);
+/* =============== ردود ثابتة مخصصة للنوايا =============== */
 
-  return !blockedIntents.has(intentId);
+// ترحيب
+function buildGreetingReply() {
+  return `👋 أهلاً بك في نوفا لينك.<br>
+نوفا بوت هنا ليساعدك في كل ما يخص الذكاء الاصطناعي وتطوير الأعمال والمشاريع الصغيرة والمتوسطة.<br>
+ابدأ بسؤال واضح عن فكرتك أو مشروعك، ودعنا نبني عليه خطوة خطوة.`;
+}
+
+// شكر / إيجابية
+function buildThanksPositiveReply() {
+  return `🙏 سعيد أن الإجابة كانت مفيدة لك.<br>
+لو أحببت أن تصلك خلاصة الأفكار والأدوات التي نختبرها في نوفا لينك، فكر بإضافة بريدك في النشرة.<br>
+هكذا تتحول رسالة شكر اليوم إلى سلسلة أفكار تفيد مشروعك غدًا.`;
+}
+
+// مزاج سلبي / إحباط
+function buildNegativeMoodReply() {
+  return `💭 أقدّر شعورك تمامًا… كثير من المشاريع تتعثر قبل أن تلتقط طريقها الصحيح.<br>
+حاول أن تحوّل هذا الإحباط إلى سؤال عملي واحد: "ما الخطوة الصغيرة التالية التي يمكنني فعلها اليوم؟".<br>
+اكتب لي عن مشروعك أو وضعك الحالي، وسأحاول مساعدتك بخطوات عملية بسيطة.`;
+}
+
+// اشتراك / نشرة
+function buildSubscribeInterestReply() {
+  return `📧 يسعدنا حماسك للاشتراك في نوفا لينك.<br>
+يمكنك إدخال بريدك في بطاقة الاشتراك أو زيارة صفحة النشرة:<br>
+🔗 <a href="https://novalink-ai.com/ashtrk-alan" target="_blank" class="nova-link">اشترك في نوفا لينك</a><br>
+ستصلك خلاصة أدوات وأفكار عملية عن الذكاء الاصطناعي وتطوير الأعمال.`;
+}
+
+// تعاون / شراكة
+function buildCollaborationReply() {
+  return `🤝 نوفا لينك منفتحة على التعاونات المهنية الجادة المرتبطة بالذكاء الاصطناعي للأعمال وتطوير المهارات.<br>
+يمكن أن يكون التعاون على شكل رعاية محتوى، ورش عمل، ندوات مشتركة، أو مشاريع رقمية تخدم روّاد الأعمال.<br>
+يمكنك استخدام البطاقة الظاهرة أو مراسلتنا مباشرة:<br>
+📧 <a href="mailto:contact@novalink-ai.com" class="nova-link">contact@novalink-ai.com</a><br>
+رجاءً اذكر نوع التعاون، الفئة المستهدفة، وأي تفاصيل إضافية تساعدنا على فهم فكرتك بسرعة.`;
+}
+
+// استشارة / شراء خدمة
+function buildConsultingPurchaseReply() {
+  return `📌 طلب استشارة أو شراء خدمة من نوفا لينك خطوة عملية جدًا.<br>
+يمكننا مساعدتك في بناء بوت دردشة مخصص لعملك، أو رسم مسار عمل ذكي لاستخدام أدوات الذكاء الاصطناعي في مشروعك.<br>
+استخدم البطاقة الظاهرة لحجز استشارة تعريفية قصيرة، وسيتم تجهيز بريد جاهز لتأكيد طلبك.<br>
+أو راسلنا مباشرة:<br>
+📧 <a href="mailto:contact@novalink-ai.com" class="nova-link">contact@novalink-ai.com</a>`;
+}
+
+// تعريف نوفا لينك / القصة / الرؤية / الرسالة
+function buildNovaLinkInfoReply() {
+  return `🌌 نوفا لينك (NOVALINK Ai) هي مساحة عربية صُممت لتكون جسرًا بين روّاد الأعمال والذكاء الاصطناعي.<br><br>
+بدأت الفكرة كرحلة فردية من مجال البنوك إلى عالم الذكاء الاصطناعي، وتحولت تدريجيًا إلى منصة تركّز على ثلاث محاور:<br>
+1️⃣ تبسيط أدوات الذكاء الاصطناعي لروّاد الأعمال وأصحاب المشاريع الصغيرة والمتوسطة.<br>
+2️⃣ تقديم محتوى عملي يمكن تطبيقه مباشرة في العمل، بعيدًا عن النظريات المعقدة.<br>
+3️⃣ بناء مجتمع عربي يرى في الذكاء الاصطناعي "موظفًا ذكيًا" يضيف لقيمته، لا بديلًا عنه.<br><br>
+يمكنك التعرّف أكثر على الرؤية والقصة الكاملة:<br>
+🔗 <a href="https://novalink-ai.com/about-us-althkaa-alastnaay" target="_blank" class="nova-link">من نحن – نوفا لينك</a><br>
+🔗 <a href="https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk" target="_blank" class="nova-link">رحلتي مع نوفا لينك</a>`;
+}
+
+// تعريف نوفا بوت نفسه
+function buildNovaBotInfoReply() {
+  return `🤖 نوفا بوت هو مساعد دردشة ذكي من منصة نوفا لينك،<br>
+مهمته التركيز على كل ما يتقاطع بين الذكاء الاصطناعي وتطوير الأعمال والمشاريع.<br><br>
+نوفا بوت لا يهدف للإجابة عن كل شيء في العالم، بل عن الأسئلة التي تساعدك على:<br>
+- فهم أدوات الذكاء الاصطناعي وكيف توظّفها في مشروعك.<br>
+- استكشاف أفكار لتطوير عملك وزيادة الإنتاجية.<br>
+- التعرّف على محتوى نوفا لينك المناسب لسؤالك.<br><br>
+كلما كان سؤالك مرتبطًا بالـ AI والبزنس، أصبح نوفا بوت أدق وأقرب لما تحتاجه فعلاً.`;
 }
 
 /* =============== واجهة الدماغ الرئيسية =============== */
@@ -374,49 +434,135 @@ export async function novaBrainSystem(request = {}) {
     };
   }
 
-  // 1) تحميل المعرفة ومحاولة إيجاد أقرب تدوينة
-  const kb = await loadKnowledgeBase();
-  let bestMatch = { score: 0, item: null };
+  // ==============================
+  // 1) معالجة النوايا الثابتة أولاً
+  // ==============================
 
-  if (kb.length) {
-    bestMatch = findBestMatch(userText, kb);
-  }
-
-  const { score, item } = bestMatch;
-
-  // 2) إذا كان التطابق قويًا → رد مؤتمت مع رابط فقط (بدون Gemini)
-  if (item && score >= STRONG_MATCH_THRESHOLD) {
-    const replyHtml = buildStrongMatchReply(item);
+  // ترحيب
+  if (intentId === "greeting") {
     return {
-      reply: replyHtml,
-      actionCard: request.suggestedCard || null
+      reply: buildGreetingReply(),
+      actionCard: null
     };
   }
 
-  // 3) تطابق متوسط → نحاول Gemini + رابط (إذا النية مسموح لها)، وإلا قالب مؤتمت
-  if (item && score >= MEDIUM_MATCH_THRESHOLD && score < STRONG_MATCH_THRESHOLD) {
-    let replyHtml;
+  // شكر / إيجابية
+  if (intentId === "thanks_positive") {
+    return {
+      reply: buildThanksPositiveReply(),
+      actionCard: request.suggestedCard || "subscribe"
+    };
+  }
 
-    if (shouldUseAI(intentId)) {
+  // مزاج سلبي
+  if (intentId === "negative_mood") {
+    return {
+      reply: buildNegativeMoodReply(),
+      actionCard: null
+    };
+  }
+
+  // اشتراك / نشرة
+  if (intentId === "subscribe_interest") {
+    return {
+      reply: buildSubscribeInterestReply(),
+      actionCard: request.suggestedCard || "subscribe"
+    };
+  }
+
+  // تعاون / شراكة
+  if (intentId === "collaboration") {
+    return {
+      reply: buildCollaborationReply(),
+      actionCard: request.suggestedCard || "collaboration"
+    };
+  }
+
+  // استشارة / شراء خدمة
+  if (intentId === "consulting_purchase") {
+    return {
+      reply: buildConsultingPurchaseReply(),
+      actionCard: request.suggestedCard || "bot_lead"
+    };
+  }
+
+  // تعريف نوفا لينك / نوفا بوت (info/story/services)
+  if (
+    intentId === "novalink_info" ||
+    intentId === "novalink_story" ||
+    intentId === "novalink_services"
+  ) {
+    return {
+      reply: buildNovaLinkInfoReply(),
+      actionCard: null
+    };
+  }
+
+  if (intentId === "novabot_info") {
+    return {
+      reply: buildNovaBotInfoReply(),
+      actionCard: null
+    };
+  }
+
+  // خارج نطاق الذكاء الاصطناعي والأعمال → رد تحفيزي من الستة
+  if (intentId === "out_of_scope") {
+    return {
+      reply: getRandomGenericReply(),
+      actionCard: null
+    };
+  }
+
+  // نوايا عشوائية أو "casual" → نعاملها كرسالة تحفيزية عامة
+  if (intentId === "casual") {
+    return {
+      reply: getRandomGenericReply(),
+      actionCard: null
+    };
+  }
+
+  // ==============================
+  // 2) نية الذكاء الاصطناعي وتطوير الأعمال ONLY
+  // ==============================
+  if (intentId === "ai_business" && shouldUseAI(intentId)) {
+    // 2-أ) تحميل المعرفة ومحاولة إيجاد أقرب تدوينة
+    const kb = await loadKnowledgeBase();
+    let bestMatch = { score: 0, item: null };
+
+    if (kb.length) {
+      bestMatch = findBestMatch(userText, kb);
+    }
+
+    const { score, item } = bestMatch;
+
+    // 2-ب) إذا كان التطابق قويًا → رد مؤتمت مع رابط فقط (بدون Gemini)
+    if (item && score >= STRONG_MATCH_THRESHOLD) {
+      const replyHtml = buildStrongMatchReply(item);
+      return {
+        reply: replyHtml,
+        actionCard: request.suggestedCard || null
+      };
+    }
+
+    // 2-ج) تطابق متوسط → نحاول Gemini + رابط، وإلا قالب مؤتمت
+    if (item && score >= MEDIUM_MATCH_THRESHOLD && score < STRONG_MATCH_THRESHOLD) {
+      let replyHtml;
+
       const aiText = await callGemini(userText, request, item);
       if (aiText) {
         replyHtml = wrapAiAnswerWithLink(aiText, item);
       } else {
         replyHtml = buildMidMatchTemplateReply(item);
       }
-    } else {
-      replyHtml = buildMidMatchTemplateReply(item);
+
+      return {
+        reply: replyHtml,
+        actionCard: request.suggestedCard || null
+      };
     }
 
-    return {
-      reply: replyHtml,
-      actionCard: request.suggestedCard || null
-    };
-  }
-
-  // 4) لا يوجد تطابق كافٍ أو لا توجد معرفة
-  //    نحاول Gemini إذا النية في نطاق الذكاء الاصطناعي للأعمال
-  if (shouldUseAI(intentId)) {
+    // 2-د) لا يوجد تطابق كافٍ أو لا توجد معرفة
+    //      → نحاول Gemini بدون ربط بمقال معيّن
     const aiText = await callGemini(userText, request, null);
     if (aiText) {
       const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
@@ -425,16 +571,21 @@ export async function novaBrainSystem(request = {}) {
         actionCard: request.suggestedCard || null
       };
     }
+
+    // 2-هـ) فول باك داخل نطاق الأعمال/الذكاء الاصطناعي
+    const fallback = buildNoMatchReply();
+    return {
+      reply: fallback,
+      actionCard: request.suggestedCard || null
+    };
   }
 
-  // 5) فول باك كامل → الردود المؤتمتة من روح v4.8
-  const fallback =
-    intentId === "learn" || intentId === "explore"
-      ? getRandomGenericReply()
-      : buildNoMatchReply();
-
+  // ==============================
+  // 3) أي شيء لم يتم التقاطه صراحةً
+  //     → نتعامل معه كخارج النطاق
+  // ==============================
   return {
-    reply: fallback,
-    actionCard: request.suggestedCard || null
+    reply: getRandomGenericReply(),
+    actionCard: null
   };
 }
