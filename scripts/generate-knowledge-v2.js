@@ -69,4 +69,88 @@ async function scrapePage(url, forcedCategory = null) {
       $('meta[property="og:title"]').attr("content") ||
       $("title").text() ||
       $("h1").first().text();
-    const title = cleanTex
+    const title = cleanText(rawTitle);
+
+    let desc =
+      $('meta[name="description"]').attr("content") ||
+      $('meta[property="og:description"]').attr("content") ||
+      "";
+    desc = cleanText(desc);
+
+    let excerpt = "";
+    $("p, h2, h3, li").each((_, el) => {
+      if (excerpt) return;
+      const txt = cleanText($(el).text() || "");
+      if (txt.length >= 60) excerpt = txt;
+    });
+
+    if (!excerpt) {
+      const mainText =
+        cleanText($("main").text() || "") ||
+        cleanText($("body").text() || "");
+      excerpt = mainText.substring(0, 200);
+    }
+
+    const category = forcedCategory || extractCategory(url);
+
+    let metaKeywords = $('meta[name="keywords"]').attr("content") || "";
+    const metaList = metaKeywords
+      ? metaKeywords.split(",").map(k => cleanText(k))
+      : [];
+
+    const autoFromTitle = extractKeywordsFromTitle(title);
+    const autoFromDesc = extractKeywordsFromTitle(desc);
+    const categoryTags = [category];
+
+    const keywords = mergeKeywords(metaList, autoFromTitle, autoFromDesc, categoryTags);
+
+    if (!title || title.length < 5) return null;
+
+    return { title, url, description: desc || excerpt, excerpt, category, keywords };
+  } catch {
+    return null;
+  }
+}
+
+// =============== قراءة السايت ماب ===============
+
+async function loadSitemapUrls() {
+  const res = await fetch(SITEMAP_URL);
+  if (!res.ok) throw new Error("فشل تحميل السايت ماب");
+  const xml = await res.text();
+  const urls = Array.from(xml.matchAll(/<loc>(.*?)<\/loc>/g)).map(m => m[1]);
+  return Array.from(new Set(urls));
+}
+
+// =============== تجميع المعرفة ===============
+
+async function build() {
+  console.log("🚀 بدء توليد المعرفة…");
+
+  const urls = await loadSitemapUrls();
+
+  EXTRA_PAGES.forEach(p => {
+    if (!urls.includes(p.url)) urls.push(p.url);
+  });
+
+  const items = [];
+
+  for (const url of urls) {
+    const custom = EXTRA_PAGES.find(p => p.url === url);
+    const forcedCategory = custom?.category || null;
+
+    const item = await scrapePage(url, forcedCategory);
+    if (item) items.push(item);
+  }
+
+  items.sort((a, b) => a.title.localeCompare(b.title, "ar"));
+
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(items, null, 2), "utf8");
+
+  console.log("✔ تم إنشاء knowledge.v2.json");
+}
+
+build().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
