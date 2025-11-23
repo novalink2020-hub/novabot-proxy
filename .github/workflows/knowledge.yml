@@ -21,10 +21,9 @@ jobs:
       - name: Install dependencies
         run: |
           npm init -y
-          npm install cheerio
-          npm install node-fetch@2
+          npm install axios cheerio
 
-      - name: Run knowledge generator script
+      - name: Run generator
         run: node scripts/generate-knowledge.cjs
 
       - name: Commit Knowledge File
