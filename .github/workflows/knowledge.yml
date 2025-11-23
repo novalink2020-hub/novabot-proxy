@@ -22,7 +22,7 @@ jobs:
         run: npm install cheerio node-fetch@2
 
       - name: Run generator
-        run: node scripts/generate-knowledge.js
+        run: node scripts/generate-knowledge.cjs
 
       - name: Commit Knowledge JSON
         run: |
