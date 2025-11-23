@@ -19,7 +19,9 @@ jobs:
           node-version: "18"
 
       - name: Install dependencies
-        run: npm install cheerio node-fetch
+        run: |
+          npm init -y
+          npm install cheerio node-fetch@2
 
       - name: Run knowledge generator script
         run: node scripts/generate-knowledge-v2.js
