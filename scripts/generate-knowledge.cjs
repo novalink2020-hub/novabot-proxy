@@ -1,5 +1,5 @@
-// NOVALINK – Knowledge Generator (CJS Version)
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+// NOVALINK – Knowledge Generator (CJS Version using AXIOS)
+const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs");
 
@@ -34,29 +34,11 @@ function extractCategory(url) {
   return "general";
 }
 
-function extractKeywordsFromTitle(title = "") {
-  return cleanText(title)
-    .split(" ")
-    .filter(w => w.length >= 3)
-    .slice(0, 8);
-}
-
-function mergeKeywords(...lists) {
-  const set = new Set();
-  lists.flat().forEach(k => {
-    const val = cleanText(k).toLowerCase();
-    if (val && val.length >= 3) set.add(val);
-  });
-  return Array.from(set);
-}
-
 // ====== Scrape a page ======
 async function scrapePage(url, forcedCategory = null) {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-
-    const html = await res.text();
+    const res = await axios.get(url);
+    const html = res.data;
     const $ = cheerio.load(html);
 
     const rawTitle =
@@ -65,6 +47,7 @@ async function scrapePage(url, forcedCategory = null) {
       $("h1").first().text();
 
     const title = cleanText(rawTitle);
+
     let desc =
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
@@ -78,31 +61,26 @@ async function scrapePage(url, forcedCategory = null) {
       if (txt.length >= 60) excerpt = txt;
     });
 
-    if (!excerpt) {
-      const mainText =
-        cleanText($("main").text() || "") ||
-        cleanText($("body").text() || "");
-      excerpt = mainText.substring(0, 200);
-    }
-
     const category = forcedCategory || extractCategory(url);
 
-    const keywords = mergeKeywords(
-      extractKeywordsFromTitle(title),
-      extractKeywordsFromTitle(desc),
-      [category]
-    );
-
-    return { title, url, description: desc || excerpt, excerpt, category, keywords };
-  } catch {
+    return {
+      title,
+      url,
+      description: desc || excerpt,
+      excerpt,
+      category,
+      keywords: [category]
+    };
+  } catch (e) {
+    console.log("Error loading:", url);
     return null;
   }
 }
 
 // ====== Load URLs ======
 async function loadSitemapUrls() {
-  const res = await fetch(SITEMAP_URL);
-  const xml = await res.text();
+  const res = await axios.get(SITEMAP_URL);
+  const xml = res.data;
   const urls = Array.from(xml.matchAll(/<loc>(.*?)<\/loc>/g)).map(m => m[1]);
   return Array.from(new Set(urls));
 }
@@ -112,6 +90,7 @@ async function build() {
   console.log("🚀 Generating knowledge file...");
 
   const urls = await loadSitemapUrls();
+
   EXTRA_PAGES.forEach(p => { if (!urls.includes(p.url)) urls.push(p.url); });
 
   const items = [];
@@ -124,7 +103,7 @@ async function build() {
   items.sort((a, b) => a.title.localeCompare(b.title, "ar"));
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(items, null, 2), "utf8");
 
-  console.log("✔ knowledge.v2.json generated.");
+  console.log("✔ knowledge.v2.json generated");
 }
 
 build().catch(err => {
