@@ -1,34 +1,33 @@
 name: Generate Knowledge JSON
 
 on:
-  workflow_dispatch: {}
   schedule:
     - cron: "0 */12 * * *"
+  workflow_dispatch: {}
 
 jobs:
-  sandbox:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Create sandbox folder
-        run: mkdir sandbox
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Copy script into sandbox
-        run: cp scripts/generate-knowledge.cjs sandbox/generate-knowledge.cjs
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: "18"
 
-      - name: Enter sandbox and setup Node
-        working-directory: sandbox
+      - name: Install dependencies
         run: |
           npm init -y
-          npm install axios cheerio
+          npm install cheerio
+          npm install node-fetch@2
 
-      - name: Run generator inside sandbox
-        working-directory: sandbox
-        run: node generate-knowledge.cjs
+      - name: Run knowledge generator script
+        run: node scripts/generate-knowledge.cjs
 
-      - name: Copy output back to repo
-        run: cp sandbox/knowledge.v2.json knowledge.v2.json
-
-      - name: Commit file
+      - name: Commit Knowledge File
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
