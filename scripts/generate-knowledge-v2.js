@@ -1,9 +1,9 @@
 // generate-knowledge-v2.js
 // V2 – مولّد knowledge.json محسّن لنوفا لينك
 
-import fetch from "node-fetch";
-import * as cheerio from "cheerio";
-import fs from "fs";
+const fetch = require("node-fetch");
+const cheerio = require("cheerio");
+const fs = require("fs");
 
 // ================= الإعدادات الأساسية =================
 
