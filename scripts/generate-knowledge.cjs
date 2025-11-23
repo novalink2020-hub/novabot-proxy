@@ -1,7 +1,7 @@
-// generate-knowledge.js
-// Knowledge Generator – NOVALINK AI – GitHub Actions Compatible (CJS)
+// generate-knowledge.cjs
+// NOVALINK AI – Knowledge Generator – Axios Version
 
-const fetch = require("node-fetch");
+const axios = require("axios");
 const cheerio = require("cheerio");
 const fs = require("fs");
 
@@ -57,10 +57,9 @@ function mergeKeywords(...lists) {
 
 async function scrapePage(url, forcedCategory = null) {
   try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
+    const res = await axios.get(url);
+    const html = res.data;
 
-    const html = await res.text();
     const $ = cheerio.load(html);
 
     const rawTitle =
@@ -107,7 +106,8 @@ async function scrapePage(url, forcedCategory = null) {
     if (!title || title.length < 5) return null;
 
     return { title, url, description: desc || excerpt, excerpt, category, keywords };
-  } catch {
+  } catch (err) {
+    console.log("خطأ في الصفحة:", url);
     return null;
   }
 }
@@ -115,10 +115,9 @@ async function scrapePage(url, forcedCategory = null) {
 // =============== قراءة السايت ماب ===============
 
 async function loadSitemapUrls() {
-  const res = await fetch(SITEMAP_URL);
-  if (!res.ok) throw new Error("فشل تحميل السايت ماب");
+  const res = await axios.get(SITEMAP_URL);
+  const xml = res.data;
 
-  const xml = await res.text();
   const urls = Array.from(xml.matchAll(/<loc>(.*?)<\/loc>/g)).map(m => m[1]);
 
   return Array.from(new Set(urls));
