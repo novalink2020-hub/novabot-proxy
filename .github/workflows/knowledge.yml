@@ -1,9 +1,9 @@
 name: Generate Knowledge JSON
 
 on:
+  workflow_dispatch: {}
   schedule:
     - cron: "0 */12 * * *"
-  workflow_dispatch: {}
 
 jobs:
   build:
@@ -21,13 +21,12 @@ jobs:
       - name: Install dependencies
         run: |
           npm init -y
-          npm install cheerio
-          npm install node-fetch@3
+          npm install cheerio node-fetch@2
 
-      - name: Run knowledge generator script
-        run: node scripts/generate-knowledge-v2.js
+      - name: Run generator
+        run: node scripts/generate-knowledge.js
 
-      - name: Commit Knowledge File
+      - name: Commit Knowledge JSON
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
