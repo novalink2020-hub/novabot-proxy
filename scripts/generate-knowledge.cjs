@@ -1,12 +1,9 @@
-// generate-knowledge.cjs
-// NOVALINK AI – Knowledge Generator – Axios Version
-
-const axios = require("axios");
+// NOVALINK – Knowledge Generator (CJS Version)
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const cheerio = require("cheerio");
 const fs = require("fs");
 
-// ================= الإعدادات الأساسية =================
-
+// ====== Settings ======
 const DOMAIN = "https://novalink-ai.com";
 const SITEMAP_URL = `${DOMAIN}/sitemap.xml`;
 
@@ -17,14 +14,14 @@ const EXTRA_PAGES = [
 
 const OUTPUT_FILE = "./knowledge.v2.json";
 
-// =============== دوال مساعدة ===============
-
+// ====== Helpers ======
 function cleanText(str = "") {
   return str.replace(/\s+/g, " ").replace(/(&nbsp;)/g, " ").trim();
 }
 
 function extractCategory(url) {
-  const path = new URL(url).pathname;
+  const u = new URL(url);
+  const path = u.pathname;
 
   if (path === "/" || path === "") return "home";
   if (path.includes("services")) return "services";
@@ -53,21 +50,21 @@ function mergeKeywords(...lists) {
   return Array.from(set);
 }
 
-// =============== استخراج بيانات صفحة ===============
-
+// ====== Scrape a page ======
 async function scrapePage(url, forcedCategory = null) {
   try {
-    const res = await axios.get(url);
-    const html = res.data;
+    const res = await fetch(url);
+    if (!res.ok) return null;
 
+    const html = await res.text();
     const $ = cheerio.load(html);
 
     const rawTitle =
       $('meta[property="og:title"]').attr("content") ||
-      $("title").first().text() ||
+      $("title").text() ||
       $("h1").first().text();
-    const title = cleanText(rawTitle);
 
+    const title = cleanText(rawTitle);
     let desc =
       $('meta[name="description"]').attr("content") ||
       $('meta[property="og:description"]').attr("content") ||
@@ -77,78 +74,57 @@ async function scrapePage(url, forcedCategory = null) {
     let excerpt = "";
     $("p, h2, h3, li").each((_, el) => {
       if (excerpt) return;
-      const txt = cleanText($(el).text());
+      const txt = cleanText($(el).text() || "");
       if (txt.length >= 60) excerpt = txt;
     });
 
     if (!excerpt) {
       const mainText =
-        cleanText($("main").text()) ||
-        cleanText($("body").text());
+        cleanText($("main").text() || "") ||
+        cleanText($("body").text() || "");
       excerpt = mainText.substring(0, 200);
     }
 
     const category = forcedCategory || extractCategory(url);
 
-    let metaKeywords = $('meta[name="keywords"]').attr("content") || "";
-    const metaList = metaKeywords ? metaKeywords.split(",").map(cleanText) : [];
-
-    const autoFromTitle = extractKeywordsFromTitle(title);
-    const autoFromDesc = extractKeywordsFromTitle(desc);
-
     const keywords = mergeKeywords(
-      metaList,
-      autoFromTitle,
-      autoFromDesc,
+      extractKeywordsFromTitle(title),
+      extractKeywordsFromTitle(desc),
       [category]
     );
 
-    if (!title || title.length < 5) return null;
-
     return { title, url, description: desc || excerpt, excerpt, category, keywords };
-  } catch (err) {
-    console.log("خطأ في الصفحة:", url);
+  } catch {
     return null;
   }
 }
 
-// =============== قراءة السايت ماب ===============
-
+// ====== Load URLs ======
 async function loadSitemapUrls() {
-  const res = await axios.get(SITEMAP_URL);
-  const xml = res.data;
-
+  const res = await fetch(SITEMAP_URL);
+  const xml = await res.text();
   const urls = Array.from(xml.matchAll(/<loc>(.*?)<\/loc>/g)).map(m => m[1]);
-
   return Array.from(new Set(urls));
 }
 
-// =============== تجميع وحفظ المعرفة ===============
-
+// ====== Build Knowledge ======
 async function build() {
-  console.log("🚀 بدء التوليد…");
+  console.log("🚀 Generating knowledge file...");
 
   const urls = await loadSitemapUrls();
-
-  EXTRA_PAGES.forEach(p => {
-    if (!urls.includes(p.url)) urls.push(p.url);
-  });
+  EXTRA_PAGES.forEach(p => { if (!urls.includes(p.url)) urls.push(p.url); });
 
   const items = [];
-
   for (const url of urls) {
     const custom = EXTRA_PAGES.find(p => p.url === url);
-    const forced = custom?.category || null;
-
-    const item = await scrapePage(url, forced);
+    const item = await scrapePage(url, custom?.category || null);
     if (item) items.push(item);
   }
 
   items.sort((a, b) => a.title.localeCompare(b.title, "ar"));
-
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(items, null, 2), "utf8");
 
-  console.log("✔ تم إنشاء knowledge.v2.json");
+  console.log("✔ knowledge.v2.json generated.");
 }
 
 build().catch(err => {
