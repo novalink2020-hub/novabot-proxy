@@ -6,25 +6,29 @@ on:
     - cron: "0 */12 * * *"
 
 jobs:
-  build:
+  sandbox:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Create sandbox folder
+        run: mkdir sandbox
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: "18"
+      - name: Copy script into sandbox
+        run: cp scripts/generate-knowledge.cjs sandbox/generate-knowledge.cjs
 
-      - name: Install dependencies
-        run: npm install axios cheerio
+      - name: Enter sandbox and setup Node
+        working-directory: sandbox
+        run: |
+          npm init -y
+          npm install axios cheerio
 
-      - name: Run generator
-        run: node scripts/generate-knowledge.cjs
+      - name: Run generator inside sandbox
+        working-directory: sandbox
+        run: node generate-knowledge.cjs
 
-      - name: Commit Knowledge JSON
+      - name: Copy output back to repo
+        run: cp sandbox/knowledge.v2.json knowledge.v2.json
+
+      - name: Commit file
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "GitHub Actions"
