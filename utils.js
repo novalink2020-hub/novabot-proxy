@@ -1,10 +1,9 @@
-// utils.js – NovaBot PRO
-// ES Module
+// utils.js – NovaBot PRO – Unified Tools
 // ---------------------------------------
-// أدوات مساعدة مشتركة بين Brain و Intent و Knowledge Engine
+// هذا الملف يجمع كل الدوال المطلوبة للنظام الجديد والقديم معًا
 
-// تنظيف النص من الضوضاء والرموز
-export function normalizeText(text = "") {
+// تنظيف النصوص من الضوضاء والرموز
+export function cleanText(text = "") {
   return (text || "")
     .toString()
     .trim()
@@ -13,32 +12,7 @@ export function normalizeText(text = "") {
     .toLowerCase();
 }
 
-// استخراج نص آمن (لمنع انهيار النظام)
-export function safeExtract(obj, key, fallback = "") {
-  try {
-    const val = obj?.[key];
-    if (!val) return fallback;
-    return normalizeText(val);
-  } catch {
-    return fallback;
-  }
-}
-
-// حساب التشابه البسيط (النسبة)
-export function computeSimilarity(a, b) {
-  a = normalizeText(a);
-  b = normalizeText(b);
-
-  if (!a || !b) return 0;
-
-  const setA = new Set(a.split(" "));
-  const setB = new Set(b.split(" "));
-  const intersection = new Set([...setA].filter(x => setB.has(x)));
-
-  return intersection.size / Math.max(setA.size, setB.size);
-}
-
-// تنظيف HTML بشكل مبسط
+// تصغير النص + إزالة HTML
 export function cleanHTML(html = "") {
   return (html || "")
     .replace(/<[^>]+>/g, " ")
@@ -46,15 +20,60 @@ export function cleanHTML(html = "") {
     .trim();
 }
 
-// دمج نصوص للبحث
-export function mergeFields(...items) {
-  return items
-    .filter(Boolean)
-    .map(x => normalizeText(x))
-    .join(" ");
+// تقسيم النص إلى كلمات بسيطة
+export function tokenize(text = "") {
+  return cleanText(text).split(" ").filter(Boolean);
 }
 
-// ترتيب النتائج حسب قوة التطابق
-export function sortByScore(arr) {
-  return arr.sort((a, b) => b.score - a.score);
+// تهريب HTML لمنع الـ XSS أو كسر الردود
+export function escapeHtml(str = "") {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// تهريب النص داخل الخصائص HTML attributes
+export function escapeAttr(str = "") {
+  return escapeHtml(str)
+    .replace(/\n/g, " ")
+    .replace(/\r/g, " ");
+}
+
+// استخراج آمن لقيمة (لمنع انهيار النظام)
+export function safeExtract(obj, key, fallback = "") {
+  try {
+    const val = obj?.[key];
+    if (!val) return fallback;
+    return cleanText(val);
+  } catch {
+    return fallback;
+  }
+}
+
+// حساب التشابه بين عبارتين
+export function computeSimilarity(a, b) {
+  const wordsA = tokenize(a);
+  const wordsB = tokenize(b);
+
+  if (!wordsA.length || !wordsB.length) return 0;
+
+  const setA = new Set(wordsA);
+  const setB = new Set(wordsB);
+
+  const intersection = [...setA].filter(w => setB.has(w));
+
+  return intersection.length / Math.max(setA.size, setB.size);
+}
+
+// دمج عدة نصوص للبحث
+export function mergeFields(...fields) {
+  return cleanText(fields.filter(Boolean).join(" "));
+}
+
+// ترتيب النتائج حسب أعلى Score
+export function sortByScore(results) {
+  return results.sort((a, b) => b.score - a.score);
 }
