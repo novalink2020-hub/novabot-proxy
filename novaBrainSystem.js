@@ -78,9 +78,8 @@ export function findBestMatch(question, items) {
 
     const baseScore = common / Math.max(3, qTokens.size);
 
-    // تعزيز التصنيفات المهمة
-    const cat = item.category || "general";
     let boost = 1;
+    const cat = item.category || "general";
 
     if (cat === "blog" || cat === "services" || cat === "story" || cat === "about") {
       boost = 1.15;
@@ -172,3 +171,14 @@ export function buildGeminiPrompt(originalQuestion, bestItem) {
 
   return base;
 }
+
+/* ============================================================
+   6. التصدير النهائي – هذا هو الدماغ الذي يستدعيه السيرفر
+   ============================================================ */
+export const novaBrainSystem = {
+  normalizeItem,
+  findBestMatch,
+  buildStrongMatchReply,
+  buildMidMatchTemplateReply,
+  buildGeminiPrompt
+};
