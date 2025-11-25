@@ -7,7 +7,7 @@ import http from "http";
 
 // استدعاء وحدات الذكاء
 import { detectNovaIntent } from "./novaIntentDetector.js";
-const novaBrainSystem = require("./novaBrainSystem.js");
+import { novaBrainSystem } from "./novaBrainSystem.js";
 
 // -------------------------------
 //  إعدادات السيرفر
