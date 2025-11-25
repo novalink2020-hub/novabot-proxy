@@ -1,15 +1,14 @@
 /**************************************************************
- * NovaBrainSystem PRO – Phase 1
- * نظام ذكاء نوفا بوت (مطابقة + بحث + تكامل مع المعرفة V4)
- * محمد – NOVALINK Ai – 2025
+ * NovaBrainSystem PRO – Phase 1 (ESM Edition)
+ * نظام ذكاء نوفا بوت – متوافق مع type: module
  **************************************************************/
 
-const { cleanText, tokenize, escapeHtml, escapeAttr } = require("./utils");
+import { cleanText, tokenize, escapeHtml, escapeAttr } from "./utils.js";
 
 /* ============================================================
    1. تطبيع عناصر ملف المعرفة knowledge.v4.json
    ============================================================ */
-function normalizeItem(raw) {
+export function normalizeItem(raw) {
   if (!raw) return null;
 
   const title = (raw.title || "").trim();
@@ -42,7 +41,7 @@ function normalizeItem(raw) {
 /* ============================================================
    2. محرك المطابقة الذكي – PRO Matching Engine
    ============================================================ */
-function findBestMatch(question, items) {
+export function findBestMatch(question, items) {
   if (!question || !items || !items.length) {
     return { score: 0, item: null };
   }
@@ -79,7 +78,7 @@ function findBestMatch(question, items) {
 
     const baseScore = common / Math.max(3, qTokens.size);
 
-    // تعزيز تصنيفات مهمة
+    // تعزيز التصنيفات المهمة
     const cat = item.category || "general";
     let boost = 1;
 
@@ -105,7 +104,7 @@ function findBestMatch(question, items) {
 /* ============================================================
    3. رد التطابق القوي (Strong Match)
    ============================================================ */
-function buildStrongMatchReply(item) {
+export function buildStrongMatchReply(item) {
   const safeTitle = escapeHtml(item.title || "");
   const safeUrl = escapeAttr(item.url || "#");
   const safeSummary = item.summary ? escapeHtml(item.summary) : "";
@@ -129,7 +128,7 @@ ${safeSummary}`;
 /* ============================================================
    4. رد التطابق المتوسط (Medium Match)
    ============================================================ */
-function buildMidMatchTemplateReply(item) {
+export function buildMidMatchTemplateReply(item) {
   const safeTitle = escapeHtml(item.title || "");
   const safeUrl = escapeAttr(item.url || "#");
   const safeSummary = item.summary ? escapeHtml(item.summary) : "";
@@ -153,7 +152,7 @@ ${safeSummary}`;
 /* ============================================================
    5. بناء سياق مخصّص لـ Gemini – Smart Prompt Builder
    ============================================================ */
-function buildGeminiPrompt(originalQuestion, bestItem) {
+export function buildGeminiPrompt(originalQuestion, bestItem) {
   let base = `أنت NovaBot من نوفا لينك. أجب عن السؤال باحترافية عربية مبسطة.\n\n`;
   base += `السؤال:\n${originalQuestion}\n\n`;
 
@@ -173,14 +172,3 @@ function buildGeminiPrompt(originalQuestion, bestItem) {
 
   return base;
 }
-
-/**************************************************************
- * التصدير
- **************************************************************/
-module.exports = {
-  normalizeItem,
-  findBestMatch,
-  buildStrongMatchReply,
-  buildMidMatchTemplateReply,
-  buildGeminiPrompt
-};
