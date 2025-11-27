@@ -1,13 +1,28 @@
 // ===========================================
-// NovaBot Mini Server v1
-// يعمل كجسر بسيط: واجهة → نوايا → دماغ → واجهة
+// NovaBot Mini Server v1 – Advanced Build
+// جسر بين الواجهة → النوايا → الدماغ → الرد
 // ===========================================
 
 import http from "http";
 
-// استدعاء وحدات الذكاء
+// وحدات الذكاء
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
+
+// -------------------------------
+// تحميل ملف المعرفة V5 عند تشغيل السيرفر
+// -------------------------------
+const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL;
+
+(async () => {
+  try {
+    console.log("📚 Loading Nova Knowledge V5...");
+    await novaBrainSystem.loadKnowledgeFromURL(KNOWLEDGE_URL);
+    console.log("✅ Knowledge V5 loaded successfully!");
+  } catch (err) {
+    console.error("❌ Failed to load knowledge:", err);
+  }
+})();
 
 // -------------------------------
 //  إعدادات السيرفر
@@ -29,13 +44,14 @@ const server = http.createServer(async (req, res) => {
       JSON.stringify({
         ok: true,
         status: "NovaBot Brain running",
+        knowledge_loaded: Boolean(novaBrainSystem.knowledgeLoaded),
         timestamp: Date.now()
       })
     );
   }
 
   // -------------------------------
-  // Preflight
+  // Preflight (CORS)
   // -------------------------------
   if (req.method === "OPTIONS") {
     res.writeHead(200);
@@ -43,7 +59,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // -------------------------------
-  // API endpoint must be POST
+  // API must be POST only
   // -------------------------------
   if (req.method !== "POST") {
     res.writeHead(405, { "Content-Type": "application/json" });
@@ -75,7 +91,7 @@ const server = http.createServer(async (req, res) => {
         ...analysis
       });
 
-      // 3) إرسال الرد للواجهة
+      // 3) إرسال الرد النهائي للواجهة
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
         JSON.stringify({
@@ -84,6 +100,7 @@ const server = http.createServer(async (req, res) => {
           actionCard: brainReply.actionCard || null
         })
       );
+
     } catch (err) {
       console.error("🔥 Server Error:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
