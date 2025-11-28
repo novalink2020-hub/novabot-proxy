@@ -1,6 +1,6 @@
 // ===========================================
-// novaBrainSystem.js – NovaBrainSystem PRO v3 (Session-aware)
-// دماغ نوفا بوت الهجين: (نوايا + جلسات + معرفة + Embeddings + Gemini)
+// novaBrainSystem.js – NovaBrainSystem PRO v3
+// دماغ نوفا بوت الهجين: (نوايا + معرفة + Embeddings + Gemini + جلسات AI)
 // By Mohammed Abu Snaina – NOVALINK.AI
 // ===========================================
 
@@ -23,9 +23,6 @@ let knowledgeSourceURL = DEFAULT_KNOWLEDGE_URL;
 // عتبات التطابق مع قاعدة المعرفة
 const STRONG_MATCH_THRESHOLD = 0.65; // تطابق قوي
 const MEDIUM_MATCH_THRESHOLD = 0.4;  // تطابق متوسط
-
-// أقصى طول افتراضي لإجابة Gemini – سيتم تعديلها ديناميكيًا
-const DEFAULT_MAX_OUTPUT_TOKENS = 200;
 
 // كاش للمعرفة + Embeddings
 let knowledgeCache = null;
@@ -83,80 +80,6 @@ function tokenize(str = "") {
       .split(" ")
       .filter((w) => w.length >= 3)
   );
-}
-
-/* =============== كشف كلمات متعلقة بالذكاء الاصطناعي / الأعمال =============== */
-
-const AI_AR_KEYWORDS = [
-  "ذكاء اصطناعي",
-  "الذكاء الاصطناعي",
-  "بوت",
-  "دردشة",
-  "أتمتة",
-  "اتمتة",
-  "روبوت",
-  "خوارزمية",
-  "تعلم آلي",
-  "تعلم آلى",
-  "التعلم الآلي",
-  "شبكات عصبية",
-  "مهارة",
-  "مهنة",
-  "مهن",
-  "وظيفة",
-  "وظائف",
-  "أعمال",
-  "الاعمال",
-  "مشروع",
-  "مشاريع",
-  "بيزنس",
-  "تسويق",
-  "تجارة إلكترونية",
-  "تجارة الكترونية",
-  "تطوير الأعمال",
-  "ريادة أعمال",
-  "ريادة الاعمال",
-  "startup",
-  "ستارت اب"
-];
-
-const AI_EN_KEYWORDS = [
-  "ai",
-  "artificial intelligence",
-  "machine learning",
-  "ml",
-  "deep learning",
-  "neural network",
-  "chatbot",
-  "bot",
-  "automation",
-  "automate",
-  "business",
-  "startup",
-  "saas",
-  "productivity",
-  "workflow",
-  "jobs",
-  "career"
-];
-
-function containsAnyKeyword(text = "", keywordList = []) {
-  const t = normalizeText(text);
-  return keywordList.some((kw) => t.includes(normalizeText(kw)));
-}
-
-// كشف هل السؤال نفسه عن AI/أعمال
-function detectAIQuestion(text = "", intentId = "explore") {
-  if (intentId === "ai_business" || intentId === "consulting_purchase") {
-    return true;
-  }
-  if (!text) return false;
-
-  const isAr = /[اأإآء-ي]/.test(text);
-  const isAiAr = containsAnyKeyword(text, AI_AR_KEYWORDS);
-  const isAiEn = containsAnyKeyword(text, AI_EN_KEYWORDS);
-
-  return isAiAr || isAiEn || (!isAr && isAiEn);
 }
 
 /* =============== تحميل قاعدة المعرفة =============== */
@@ -337,7 +260,7 @@ function keywordRoute(question = "", items = []) {
     }
   }
 
-  // 3) من نحن / نوفا لينك
+  // 3) من نحن / نوفا لينك (لو فاتت من كاشف النوايا)
   if (
     q.includes("من نحن") ||
     q.includes("من انتم") ||
@@ -517,7 +440,7 @@ const genericReplies = [
 
   `🚀 الذكاء الاصطناعي لا ينتظر أحدًا… لكنه دائمًا يفتح الباب لمن يطرق بثقة.<br>
 اكتشف كيف يمكن لأدوات بسيطة أن تختصر وقتك وتضاعف نتائجك.<br>
-🔗 <a href="https://novalink-ai.com/blog" target="_blank" class="nova-link">ابدأ رحلتك الآن</a>`,
+🔗 <a href="https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal" target="_blank" class="nova-link">ابدأ من المدونة</a>`,
 
   `قبل أن تغادر… تذكّر أن كل إنجاز يبدأ بسؤال بسيط ورغبة في التعلّم.<br>
 اسمح لنفسك أن تتقدّم خطوة كل يوم — فالعالم لا ينتظر، لكنه يكافئ من يواصل المسير بثبات وثقة.<br>
@@ -543,6 +466,7 @@ function buildStrongMatchReply(item) {
   const safeTitle = escapeHtml(item.title || "");
   const safeUrl = escapeAttr(item.url || "#");
 
+  // ✅ تطابق قوي = رد مؤتمت + رابط فقط (بدون Gemini)
   return `
   📌 يبدو أن سؤالك يلامس موضوعًا تناولناه في نوفا لينك بعنوان:<br>
   “${safeTitle}”.<br><br>
@@ -572,6 +496,22 @@ function wrapAiAnswerWithLink(aiText, item) {
   </a>`;
 }
 
+/* =============== استنتاج نوع الجلسة (AI / غير AI) =============== */
+
+/**
+ * recentMessages: مصفوفة اختيارية من آخر الرسائل، يمررها السيرفر:
+ * [{ role: "user" | "assistant", text: string, intentId?: string }, ...]
+ */
+function detectAISession(currentIntentId, recentMessages = []) {
+  if (currentIntentId === "ai_business") return true;
+
+  const lastUserMsgs = recentMessages
+    .filter((m) => m && m.role === "user")
+    .slice(-3); // آخر 3 فقاعات من المستخدم فقط
+
+  return lastUserMsgs.some((m) => m.intentId === "ai_business");
+}
+
 /* =============== استدعاء Gemini =============== */
 
 function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false) {
@@ -596,21 +536,21 @@ function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false) {
     lang === "en" ? "English" : "Arabic (Modern Standard, friendly)"
   }.\n`;
   if (analysis.dialectHint && lang !== "en") {
-    base += `Dialect hint: ${analysis.dialectHint}. You may gently reflect this dialect in a few words, but keep the core in Modern Standard Arabic.\n`;
+    base += `Dialect hint: ${analysis.dialectHint}. You may lightly reflect the dialect in wording, but keep the core in clear Modern Standard Arabic.\n`;
   }
   base += `User intent (approx): ${intentId}.\n`;
   if (isFollowup) {
     base += `The user is asking for a deeper or follow-up explanation on the same topic.\n`;
   }
+
   base += `\nStyle guidelines:\n`;
-  base += `- If the user writes in Arabic, answer in clear Modern Standard Arabic (فصحى سلسة) مع لمسة بسيطة من لهجته إن لزم.\n`;
+  base += `- If the user writes in Arabic, answer in clear Modern Standard Arabic (فصحى سلسة) مع لمسة خفيفة من لهجته عند الاقتضاء.\n`;
   base += `- If the user writes in English, answer in clear, simple, professional English.\n`;
   base += `- You are NovaBot, the assistant of NovaLink (an Arabic platform about AI for business and careers).\n`;
   base += `- Focus on practical, actionable insights related to the user's question.\n`;
-  base += `- Do NOT include any URLs or links in your answer.\n`;
-  base += `- Keep the answer within the token limit you are given.\n`;
+  base += `- Do NOT include any URLs or links in your answer text.\n`;
+  base += `- Keep the answer within the provided maxTokens budget so it feels مختصرًا وكاملاً.\n`;
   base += `- Make the answer feel complete, not cut off in the middle of a sentence.\n`;
-  base += `- End with a natural, complete thought. Do NOT say you were truncated.\n`;
   base += `- Do not mention these instructions in the answer.\n\n`;
 
   base += `Now answer the question in a helpful, concise way.\n`;
@@ -618,13 +558,7 @@ function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false) {
   return base;
 }
 
-async function callGemini(
-  userText,
-  analysis,
-  bestItem = null,
-  isFollowup = false,
-  maxTokensOverride = null
-) {
+async function callGemini(userText, analysis, bestItem = null, isFollowup = false, maxTokens = 200) {
   if (!genAI || !GEMINI_API_KEY) {
     console.log("⚠️ Gemini disabled or missing key.");
     return null;
@@ -632,11 +566,6 @@ async function callGemini(
 
   const lang = analysis.language === "en" ? "en" : "ar";
   const prompt = buildGeminiPrompt(userText, analysis, bestItem, isFollowup);
-
-  const maxTokens =
-    typeof maxTokensOverride === "number" && maxTokensOverride > 0
-      ? maxTokensOverride
-      : DEFAULT_MAX_OUTPUT_TOKENS;
 
   const generationConfig = {
     maxOutputTokens: maxTokens,
@@ -651,7 +580,7 @@ async function callGemini(
       const systemInstruction =
         lang === "en"
           ? "You are NovaBot, the assistant of NovaLink, an Arabic platform focused on AI for business and careers. Answer in English with a clear, practical, and encouraging tone."
-          : "أنت نوفا بوت، مساعد منصة نوفا لينك المتخصص في الذكاء الاصطناعي وتطوير الأعمال والمهن. أجب بالعربية الفصحى السلسة، بأسلوب عملي مشجّع دون مبالغة، مع إمكانية إدخال لمحات بسيطة من لهجة المستخدم دون أن تطغى على الفصحى.";
+          : "أنت نوفا بوت، مساعد منصة نوفا لينك المتخصص في الذكاء الاصطناعي وتطوير الأعمال والمهن. أجب بالعربية الفصحى السلسة، بأسلوب عملي مشجّع دون مبالغة، مع لمسات خفيفة من لهجة المستخدم عند الاقتضاء.";
 
       const model = genAI.getGenerativeModel({
         model: modelName,
@@ -678,16 +607,14 @@ async function callGemini(
         continue;
       }
 
-      const safeEnding =
-        lang === "en"
-          ? " If you’d like a deeper explanation on a specific part, just ask me to go deeper on it."
-          : " وإذا احتجت توضيحًا أعمق في نقطة معيّنة، اطلب مني أن أتعمّق فيها أكثر.";
+      // نضيف جملة صغيرة تحفيزية في النهاية (بدون روابط)
+      const tailAr = " وإذا احتجت توضيحًا أعمق في نقطة معيّنة، اطلب مني أن أتعمّق فيها أكثر.";
+      const tailEn = " If you’d like a deeper explanation on a specific part, just ask me to go deeper on it.";
 
-      if (
-        !text.includes("توضيحًا أعمق") &&
-        !text.toLowerCase().includes("deeper explanation")
-      ) {
-        text = text + safeEnding;
+      if (lang === "en" && !text.toLowerCase().includes("deeper explanation")) {
+        text = text + tailEn;
+      } else if (lang !== "en" && !text.includes("توضيحًا أعمق")) {
+        text = text + tailAr;
       }
 
       console.log("✅ Gemini success:", modelName);
@@ -713,40 +640,6 @@ function buildAutomatedFallbackReply() {
   ];
 
   return fallbackReplies[Math.floor(Math.random() * fallbackReplies.length)];
-}
-
-/* =============== إدارة الجلسة (AI Session / Non-AI Session) =============== */
-
-/**
- * نتوقع إن السيرفر يمكن أن يرسل:
- * request.recentMessages = [{ role: "user" | "bot", text: "..." }, ...]
- * نأخذ آخر 3 رسائل من المستخدم ونرى هل يوجد فيها محتوى AI/أعمال.
- */
-function detectAISession(request, userText, intentId, isAIQuestionNow) {
-  // لو السيرفر حدّدها صراحة
-  if (request.sessionMode === "ai") return true;
-  if (request.sessionMode === "non_ai") return false;
-
-  const recent = Array.isArray(request.recentMessages)
-    ? request.recentMessages
-    : [];
-
-  const allUserMessages = [
-    ...recent.filter((m) => (m.role || "user") === "user" && m.text),
-    { role: "user", text: userText, intentId }
-  ];
-
-  const last3 = allUserMessages.slice(-3);
-
-  // لو أحد آخر 3 أسئلة كان AI/أعمال → الجلسة AI
-  const hasAIInLast3 = last3.some((m) =>
-    detectAIQuestion(m.text || "", m.intentId || intentId)
-  );
-
-  if (hasAIInLast3) return true;
-
-  // لو لم نجد شيء في آخر 3، نعتمد فقط على السؤال الحالي
-  return isAIQuestionNow;
 }
 
 /* =============== ردود ثابتة مخصصة للنوايا =============== */
@@ -809,7 +702,7 @@ function buildNovaLinkInfoReply() {
 🔗 <a href="https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk" target="_blank" class="nova-link">اقرأ رحلة التأسيس</a>`;
 }
 
-// تعريف نوفا بوت نفسه – تسويقي خفيف موجه لتجربة العميل
+// تعريف نوفا بوت نفسه
 function buildNovaBotInfoReply() {
   return `🤖 نوفا بوت هو مساعد دردشة ذكي من منصة نوفا لينك، صُمّم ليكون أقرب إلى "مستشار عملي" منه إلى روبوت أسئلة وأجوبة.<br><br>
 نوفا بوت يركّز على ثلاث مسارات رئيسية:<br>
@@ -857,7 +750,7 @@ function hasDeveloperCode(text = "") {
 }
 
 function buildDeveloperCardReplyAr() {
-  return `✨ هذه بطاقة تعريف سريعة بالشخص الذي طوّر نوفا بوت ودرّبه… لمحة خفيفة عن الإنسان خلف التقنية.<br><br>
+  return `✨ هذه بطاقة تعريف سريعة بالشخص الذي طوّر نوفا بوت ودرّبه… لمحة خفيفة عن الإنسان خلف التقنية.<br>
 👨‍💻 من يقف خلف نوفا بوت؟<br>
 “محمد أبو سنينة—مطور عربي جمع خبرته بين العمل المصرفي والذكاء الاصطناعي.<br>
 يبني نوفا لينك كمساحة عملية تساعد روّاد الأعمال على استخدام الأدوات الذكية بثقة ووضوح.”`;
@@ -874,19 +767,20 @@ This card is for those who care about the human behind the system, not just the 
 /* =============== واجهة الدماغ الرئيسية =============== */
 
 export async function novaBrainSystem(request = {}) {
-  const userText =
-    (request.message || request.userMessage || request.text || "").trim();
+  const userText = (request.message || request.userMessage || request.text || "").trim();
   const intentId = request.intentId || "explore";
   const language = request.language === "en" ? "en" : "ar";
   const forceAI = request.forceAI === true;
+  const recentMessages = Array.isArray(request.recentMessages)
+    ? request.recentMessages
+    : [];
 
   // 0) رسالة فارغة → رد تحفيزي
   if (!userText) {
     return {
       reply: getRandomGenericReply(),
       actionCard: null,
-      usedAI: false,
-      sessionMode: "non_ai"
+      usedAI: false
     };
   }
 
@@ -898,8 +792,7 @@ export async function novaBrainSystem(request = {}) {
     return {
       reply,
       actionCard: "developer_identity",
-      usedAI: false,
-      sessionMode: "non_ai"
+      usedAI: false
     };
   }
 
@@ -908,10 +801,12 @@ export async function novaBrainSystem(request = {}) {
     return {
       reply: buildGoodbyeReply(),
       actionCard: null,
-      usedAI: false,
-      sessionMode: "non_ai"
+      usedAI: false
     };
   }
+
+  const isAIQuestion = intentId === "ai_business";
+  const isAISession = detectAISession(intentId, recentMessages);
 
   // 1) نوايا ثابتة (من novaIntentDetector) – إذا لم نكن نُجبر الذكاء الاصطناعي
   if (!forceAI) {
@@ -919,8 +814,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildGreetingReply(),
         actionCard: null,
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
@@ -928,8 +822,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildThanksPositiveReply(),
         actionCard: request.suggestedCard || "subscribe",
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
@@ -937,8 +830,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildNegativeMoodReply(),
         actionCard: null,
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
@@ -946,8 +838,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildSubscribeInterestReply(),
         actionCard: request.suggestedCard || "subscribe",
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
@@ -955,8 +846,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildCollaborationReply(),
         actionCard: request.suggestedCard || "collaboration",
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
@@ -964,8 +854,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildConsultingPurchaseReply(),
         actionCard: request.suggestedCard || "bot_lead",
-        usedAI: false,
-        sessionMode: "ai" // استشارة = سياق أعمال
+        usedAI: false
       };
     }
 
@@ -977,8 +866,7 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildNovaLinkInfoReply(),
         actionCard: null,
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
@@ -986,37 +874,24 @@ export async function novaBrainSystem(request = {}) {
       return {
         reply: buildNovaBotInfoReply(),
         actionCard: null,
-        usedAI: false,
-        sessionMode: "non_ai"
+        usedAI: false
       };
     }
 
-    if (intentId === "out_of_scope") {
-      // سؤال بعيد كليًا عن المجال → نستخدم الردود التحفيزية
-      return {
-        reply: getRandomGenericReply(),
-        actionCard: null,
-        usedAI: false,
-        sessionMode: "non_ai"
-      };
-    }
-
-    if (intentId === "casual") {
-      return {
-        reply: getRandomGenericReply(),
-        actionCard: null,
-        usedAI: false,
-        sessionMode: "non_ai"
-      };
+    if (intentId === "out_of_scope" || intentId === "casual") {
+      // جلسة غير AI – سؤال غير AI → من الردود الستة التحفيزية
+      if (!isAISession && !isAIQuestion) {
+        return {
+          reply: getRandomGenericReply(),
+          actionCard: null,
+          usedAI: false
+        };
+      }
+      // لو الجلسة AI لكن النية "casual" سنسمح لـ Gemini (سيتم التعامل معها لاحقًا)
     }
   }
 
-  // 2) كشف نوع السؤال + نوع الجلسة
-  const isAIQuestion = detectAIQuestion(userText, intentId);
-  const isAISession = detectAISession(request, userText, intentId, isAIQuestion);
-  const sessionMode = isAISession ? "ai" : "non_ai";
-
-  // 3) البحث عن تطابق مع قاعدة المعرفة (Strong / Medium)
+  // 2) تحميل المعرفة + حساب أفضل تطابق (يعمل في كل الحالات)
   const kb = await loadKnowledgeBase();
   let bestMatch = { score: 0, item: null };
 
@@ -1026,114 +901,90 @@ export async function novaBrainSystem(request = {}) {
 
   const { score, item } = bestMatch;
 
-  // 3-أ) تطابق قوي → رد مؤتمت + رابط فقط (بدون Gemini)
+  // 2-أ) تطابق قوي → رد مؤتمت + رابط فقط (بدون Gemini)
   if (item && score >= STRONG_MATCH_THRESHOLD) {
     const replyHtml = buildStrongMatchReply(item);
     return {
       reply: replyHtml,
       actionCard: request.suggestedCard || null,
-      usedAI: false,
-      sessionMode
+      usedAI: false
     };
   }
 
-  // 3-ب) تطابق متوسط → Gemini قصير (100) + رابط
-  if (item && score >= MEDIUM_MATCH_THRESHOLD && score < STRONG_MATCH_THRESHOLD) {
-    const isFollowup = false; // يمكن توسيعها لاحقًا
-    const aiText = await callGemini(userText, { ...request, language, intentId }, item, isFollowup, 100);
+  // 2-ب) تطابق متوسط → Gemini قصير + رابط (maxTokens = 100)
+  if (item && score >= MEDIUM_MATCH_THRESHOLD) {
+    const aiText = await callGemini(userText, request, item, false, 100);
 
     if (aiText) {
       const replyHtml = wrapAiAnswerWithLink(aiText, item);
       return {
         reply: replyHtml,
         actionCard: request.suggestedCard || null,
-        usedAI: true,
-        sessionMode
+        usedAI: true
       };
     } else {
       const replyHtml = buildMidMatchTemplateReply(item);
       return {
         reply: replyHtml,
         actionCard: request.suggestedCard || null,
-        usedAI: false,
-        sessionMode
+        usedAI: false
       };
     }
   }
 
-  // 4) لا يوجد تطابق قوي/متوسط كافٍ → نطبّق جدول التوكنز / نوع الجلسة
+  // 2-ج) لا تطابق قوي/متوسط → نقرر منطق الجلسة + نوع السؤال
 
-  // اكتشاف "متابعة" أو "أكمل" إلخ
+  // 🔹 حالة: جلسة غير AI + سؤال غير AI + لسنا مجبرين على AI → من الردود التحفيزية
+  if (!isAISession && !isAIQuestion && !forceAI) {
+    return {
+      reply: getRandomGenericReply(),
+      actionCard: null,
+      usedAI: false
+    };
+  }
+
+  // 🔹 في باقي الحالات: سنستخدم Gemini مع جدول الـ maxTokens
+
+  // كشف طلبات "أكمل / تابع / تعمق" للفلوب
   const lower = userText.toLowerCase();
-  const followupAr = ["أكمل", "تابع", "وضّح أكثر", "وضح أكثر", "تفاصيل أكثر"];
+  const followupAr = ["أكمل", "تابع", "وضّح أكثر", "وضح أكثر", "تفاصيل أكثر", "تعمق فيها", "تعمق فيها اكثر", "اتعمق فيها اكثر"];
   const followupEn = ["continue", "more", "explain", "details", "go deeper"];
 
   const isFollowup =
     followupAr.some((kw) => userText.includes(kw)) ||
     followupEn.some((kw) => lower.includes(kw));
 
-  let useGemini = false;
-  let maxTokens = 0;
+  // جدول maxTokens:
+  // - سؤال AI/أعمال + جلسة AI → 200
+  // - سؤال غير AI + جلسة AI → 100
+  // - تطابق متوسط → 100 (عالجناه فوق)
+  // - تطابق قوي → 0 (عالجناه فوق)
+  let maxTokens = 100;
 
-  if (sessionMode === "ai") {
-    // جلسة AI
-    if (isAIQuestion) {
-      // سؤال AI/أعمال داخل جلسة AI → 200 توكنز
-      useGemini = true;
-      maxTokens = 200;
-    } else {
-      // سؤال غير AI داخل جلسة AI → 100 توكنز للحفاظ على السياق
-      useGemini = true;
-      maxTokens = 100;
-    }
-  } else {
-    // جلسة غير AI
-    if (isAIQuestion) {
-      // نادرًا: سؤال AI في جلسة غير AI → نعتبرها بداية جلسة AI
-      useGemini = true;
-      maxTokens = 200;
-    } else {
-      // سؤال غير AI في جلسة غير AI → الردود الستة التحفيزية فقط
-      useGemini = false;
-      maxTokens = 40; // منطقيًا، لكن لن نستعمله فعليًا لأننا لن نستدعي Gemini
-    }
+  if (isAIQuestion && isAISession) {
+    maxTokens = 200;
+  } else if (!isAIQuestion && isAISession) {
+    maxTokens = 100;
   }
 
-  if (useGemini && maxTokens > 0) {
-    const aiText = await callGemini(
-      userText,
-      { ...request, language, intentId },
-      null,
-      isFollowup,
-      maxTokens
-    );
+  const aiText = await callGemini(userText, request, null, isFollowup, maxTokens);
 
-    if (aiText) {
-      const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
-      return {
-        reply: safe,
-        actionCard: request.suggestedCard || null,
-        usedAI: true,
-        sessionMode
-      };
-    }
-
-    // فشل Gemini → نرجع إلى رد تحفيزي/عام
-    const fallback = buildAutomatedFallbackReply();
-    const safeFallback = escapeHtml(fallback).replace(/\n/g, "<br>");
+  if (aiText) {
+    const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
     return {
-      reply: safeFallback,
+      reply: safe, // لا روابط هنا، الروابط فقط في حالات التطابق
       actionCard: request.suggestedCard || null,
-      usedAI: false,
-      sessionMode
+      usedAI: true
     };
   }
 
-  // 5) جلسة غير AI + سؤال غير AI → الردود الستة التحفيزية
+  // فشل Gemini بالكامل → fallback
+  const fallback = buildAutomatedFallbackReply();
+  const safeFallback = escapeHtml(fallback).replace(/\n/g, "<br>");
+
   return {
-    reply: getRandomGenericReply(),
-    actionCard: null,
-    usedAI: false,
-    sessionMode
+    reply: safeFallback,
+    actionCard: request.suggestedCard || null,
+    usedAI: false
   };
 }
