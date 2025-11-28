@@ -1,5 +1,5 @@
 // ===========================================
-// novaBrainSystem.js – NovaBrainSystem PRO v2
+// novaBrainSystem.js – NovaBrainSystem PRO v2 (v7 tuned)
 // دماغ نوفا بوت الهجين: (نوايا + معرفة + Embeddings + Gemini)
 // By Mohammed Abu Snaina – NOVALINK.AI
 // ===========================================
@@ -11,8 +11,14 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 // مفتاح Gemini من متغيّرات البيئة على Render
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 
-// هذا الـ JSON يكون ناتج دمج: sitemap + ملف Google Drive عبر generate-knowledge-v4.js
-const KNOWLEDGE_JSON_URL = process.env.KNOWLEDGE_JSON_URL || "";
+// مصدر ملف المعرفة – نقرأ V5 أولاً، ثم نرجع لـ KNOWLEDGE_JSON_URL إن وجد
+const DEFAULT_KNOWLEDGE_URL =
+  process.env.KNOWLEDGE_V5_URL ||
+  process.env.KNOWLEDGE_JSON_URL ||
+  "";
+
+// يمكن تغيير هذا الـ URL من السيرفر عبر loadKnowledgeFromURL
+let knowledgeSourceURL = DEFAULT_KNOWLEDGE_URL;
 
 // عتبات التطابق مع قاعدة المعرفة
 const STRONG_MATCH_THRESHOLD = 0.65; // تطابق قوي
@@ -81,7 +87,7 @@ function tokenize(str = "") {
 
 /* =============== تحميل قاعدة المعرفة =============== */
 
-// توحيد شكل عناصر المعرفة القادمة من knowledge.v4.json
+// توحيد شكل عناصر المعرفة القادمة من knowledge.v5.json
 function normalizeItem(item) {
   if (!item) return null;
   return {
@@ -99,8 +105,8 @@ function normalizeItem(item) {
 
 // تحميل قاعدة المعرفة مع كاش 12 ساعة
 async function loadKnowledgeBase() {
-  if (!KNOWLEDGE_JSON_URL) {
-    console.warn("⚠️ KNOWLEDGE_JSON_URL is not set.");
+  if (!knowledgeSourceURL) {
+    console.warn("⚠️ Knowledge URL is not set (KNOWLEDGE_V5_URL / KNOWLEDGE_JSON_URL).");
     return [];
   }
 
@@ -110,7 +116,7 @@ async function loadKnowledgeBase() {
   }
 
   try {
-    const res = await fetch(KNOWLEDGE_JSON_URL);
+    const res = await fetch(knowledgeSourceURL);
     if (!res.ok) {
       throw new Error("Knowledge JSON HTTP " + res.status);
     }
@@ -126,7 +132,7 @@ async function loadKnowledgeBase() {
     knowledgeLoadedAt = Date.now();
     knowledgeEmbeddings = null; // نعيد بناء الـ Embeddings عند أول طلب
 
-    console.log("✅ Knowledge loaded:", cleaned.length);
+    console.log("✅ Knowledge loaded from", knowledgeSourceURL, "items:", cleaned.length);
     return cleaned;
   } catch (err) {
     console.error("❌ Failed to load knowledge JSON:", err);
@@ -135,6 +141,23 @@ async function loadKnowledgeBase() {
     knowledgeEmbeddings = null;
     return [];
   }
+}
+
+/**
+ * دالة يمكن استدعاؤها من السيرفر لتحميل/تحديث ملف المعرفة V5
+ * تعيد عدد العناصر المحمّلة.
+ */
+export async function loadKnowledgeFromURL(url) {
+  if (url && typeof url === "string") {
+    knowledgeSourceURL = url.trim();
+  } else {
+    knowledgeSourceURL = DEFAULT_KNOWLEDGE_URL;
+  }
+  // تصفير الكاش
+  knowledgeCache = null;
+  knowledgeEmbeddings = null;
+  const kb = await loadKnowledgeBase();
+  return kb.length;
 }
 
 /* =============== Embeddings للمعرفة =============== */
@@ -202,11 +225,6 @@ async function ensureKnowledgeEmbeddings(items) {
 }
 
 /* =============== Keyword Routing =============== */
-/**
- * طبقة ذكية فوق Embeddings:
- * لبعض الكلمات المفتاحية نعرف مسبقًا المقال/الصفحة الأنسب.
- * هذا يمنع المقالات العامة من الفوز دائمًا (مثل صفحة المدونة).
- */
 
 function keywordRoute(question = "", items = []) {
   const q = normalizeText(question);
@@ -226,7 +244,7 @@ function keywordRoute(question = "", items = []) {
     q.includes("voice over")
   ) {
     const target =
-      findByTitleIncludes(["murf.ai", "murf ai", "daryjat", "🎙️"]) || null;
+      findByTitleIncludes(["murf", "murf.ai", "daryjat", "elevenlabs"]) || null;
     if (target) {
       return { item: target, score: 0.98 };
     }
@@ -253,7 +271,7 @@ function keywordRoute(question = "", items = []) {
     q.includes("ما هي نوفا لينك") ||
     q.includes("ما هي novalink")
   ) {
-    const target = findByTitleIncludes(["من نحن", "about", "novalink ai"]);
+    const target = findByTitleIncludes(["من نحن", "about", "novalink"]);
     if (target) {
       return { item: target, score: 0.95 };
     }
@@ -270,7 +288,6 @@ function cosineSimilarity(vecA, vecB) {
   for (let i = 0; i < vecA.length; i++) {
     dot += vecA[i] * vecB[i];
   }
-  // كلاهما normalized مسبقًا → dot ∈ [-1,1] لكن غالبًا [0,1]
   return dot;
 }
 
@@ -380,7 +397,7 @@ async function findBestMatch(question, items) {
     let semanticScore = 0;
     const itemEmb = knowledgeEmbeddings ? knowledgeEmbeddings[idx] : null;
     if (qEmbedding && itemEmb) {
-      semanticScore = cosineSimilarity(qEmbedding, itemEmb); // 0..1 تقريبًا
+      semanticScore = cosineSimilarity(qEmbedding, itemEmb);
     }
 
     const baseLexical =
@@ -455,7 +472,7 @@ function buildStrongMatchReply(item) {
   return `
   📌 يبدو أن سؤالك يلامس موضوعًا تناولناه في نوفا لينك بعنوان:<br>
   “${safeTitle}”.<br><br>
-  هذه التدوينة كُتبت لتقدّم إجابة مركّزة حول هذا النوع من الأسئلة.<br>
+  هذه التدوينة صُممت لتقدّم إجابة مركّزة يمكن تطبيقها في عملك مباشرة.<br>
   🔗 <a href="${safeUrl}" target="_blank" class="nova-link">اقرأ المقال على نوفا لينك</a>`;
 }
 
@@ -614,7 +631,8 @@ function buildAutomatedFallbackReply(userText) {
 
 /* =============== منطق استخدام الذكاء الاصطناعي =============== */
 
-function shouldUseAI(intentId) {
+function shouldUseAI(intentId, forceAI = false) {
+  if (forceAI) return true;
   return intentId === "ai_business";
 }
 
@@ -667,26 +685,25 @@ function buildConsultingPurchaseReply() {
 📧 contact@novalink-ai.com`;
 }
 
-// تعريف نوفا لينك / القصة / الرؤية / الرسالة
+// تعريف نوفا لينك / القصة / الرؤية / الرسالة – تسويقي خفيف
 function buildNovaLinkInfoReply() {
-  return `نوفا لينك (NOVALINK Ai) هي مساحة عربية صُممت لتكون جسرًا بين روّاد الأعمال والذكاء الاصطناعي.<br><br>
-بدأت الفكرة كرحلة فردية من عالم البنوك إلى عالم الذكاء الاصطناعي، وتحولت تدريجيًا إلى منصة تركّز على ثلاث محاور:<br>
-1️⃣ تبسيط أدوات الذكاء الاصطناعي لروّاد الأعمال وأصحاب المشاريع الصغيرة والمتوسطة.<br>
-2️⃣ تقديم محتوى عملي يمكن تطبيقه مباشرة في العمل، بعيدًا عن النظريات المعقدة.<br>
-3️⃣ بناء مجتمع عربي يرى في الذكاء الاصطناعي "موظفًا ذكيًا" يضيف لقيمته، لا بديلًا عنه.<br><br>
-🔗 <a href="https://novalink-ai.com/about-us-althkaa-alastnaay" target="_blank" class="nova-link">من نحن – نوفا لينك</a><br>
-🔗 <a href="https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk" target="_blank" class="nova-link">رحلتي مع نوفا لينك</a>`;
+  return `نوفا لينك (NOVALINK Ai) مساحة عربية مصمّمة لروّاد الأعمال والأشخاص الذين يريدون تحويل الذكاء الاصطناعي من "ترند" إلى أداة عمل يومية.<br><br>
+الفكرة بدأت من انتقال صاحب نوفا لينك من عالم البنوك إلى عالم الذكاء الاصطناعي، ومع كل تجربة ودرس عملي تحوّلت إلى منصة تركّز على ثلاثة محاور:<br>
+1️⃣ تبسيط أدوات الذكاء الاصطناعي بلغة مفهومة وتطبيقات عملية.<br>
+2️⃣ مساعدة أصحاب المشاريع على رفع الإنتاجية، لا زيادة التعقيد.<br>
+3️⃣ بناء مجتمع عربي يرى في الذكاء الاصطناعي "شريك عمل ذكي" يدعم قراراته ولا يستبدله.<br><br>
+🔗 <a href="https://novalink-ai.com/about-us-althkaa-alastnaay" target="_blank" class="nova-link">تعرّف أكثر على نوفا لينك</a><br>
+🔗 <a href="https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk" target="_blank" class="nova-link">اقرأ رحلة التأسيس</a>`;
 }
 
-// تعريف نوفا بوت نفسه
+// تعريف نوفا بوت نفسه – تسويقي خفيف موجه لتجربة العميل
 function buildNovaBotInfoReply() {
-  return `🤖 نوفا بوت هو مساعد دردشة ذكي من منصة نوفا لينك،<br>
-مهمته التركيز على كل ما يتقاطع بين الذكاء الاصطناعي وتطوير الأعمال والمشاريع.<br><br>
-نوفا بوت لا يهدف للإجابة عن كل شيء في العالم، بل عن الأسئلة التي تساعدك على:<br>
-- فهم أدوات الذكاء الاصطناعي وكيف توظّفها في مشروعك.<br>
-- استكشاف أفكار لتطوير عملك وزيادة الإنتاجية.<br>
-- التعرّف على محتوى نوفا لينك المناسب لسؤالك.<br><br>
-كلما كان سؤالك مرتبطًا بالـ AI والبزنس، أصبح نوفا بوت أدق وأقرب لما تحتاجه فعلاً.`;
+  return `🤖 نوفا بوت هو مساعد دردشة ذكي من منصة نوفا لينك، صُمّم ليكون أقرب إلى "مستشار عملي" منه إلى روبوت أسئلة وأجوبة.<br><br>
+نوفا بوت يركّز على ثلاث مسارات رئيسية:<br>
+- مساعدتك على فهم أدوات الذكاء الاصطناعي واختيار ما يناسب مشروعك.<br>
+- اقتراح أفكار وخطوات عملية لرفع الإنتاجية وتبسيط العمل اليومي.<br>
+- توجيهك نحو محتوى نوفا لينك الأكثر ارتباطًا بسؤالك، بدل إغراقك بروابط عشوائية.<br><br>
+كلما كان سؤالك مرتبطًا بالذكاء الاصطناعي أو تطوير الأعمال، أصبح نوفا بوت أدق وأكثر فائدة لك على المدى الطويل.`;
 }
 
 // وداع
@@ -748,12 +765,14 @@ export async function novaBrainSystem(request = {}) {
   const userText = (request.message || request.userMessage || request.text || "").trim();
   const intentId = request.intentId || "explore";
   const language = request.language === "en" ? "en" : "ar";
+  const forceAI = request.forceAI === true;
 
   // 0) رسالة فارغة → رد تحفيزي
   if (!userText) {
     return {
       reply: getRandomGenericReply(),
-      actionCard: null
+      actionCard: null,
+      usedAI: false
     };
   }
 
@@ -764,7 +783,8 @@ export async function novaBrainSystem(request = {}) {
 
     return {
       reply,
-      actionCard: "developer_identity"
+      actionCard: "developer_identity",
+      usedAI: false
     };
   }
 
@@ -772,89 +792,102 @@ export async function novaBrainSystem(request = {}) {
   if (isGoodbyeMessage(userText)) {
     return {
       reply: buildGoodbyeReply(),
-      actionCard: null
+      actionCard: null,
+      usedAI: false
     };
   }
 
-  // 1) نوايا ثابتة (من novaIntentDetector)
+  // 1) نوايا ثابتة (من novaIntentDetector) – إذا لم نكن نُجبر الذكاء الاصطناعي
 
-  if (intentId === "greeting") {
-    return {
-      reply: buildGreetingReply(),
-      actionCard: null
-    };
+  if (!forceAI) {
+    if (intentId === "greeting") {
+      return {
+        reply: buildGreetingReply(),
+        actionCard: null,
+        usedAI: false
+      };
+    }
+
+    if (intentId === "thanks_positive") {
+      return {
+        reply: buildThanksPositiveReply(),
+        actionCard: request.suggestedCard || "subscribe",
+        usedAI: false
+      };
+    }
+
+    if (intentId === "negative_mood") {
+      return {
+        reply: buildNegativeMoodReply(),
+        actionCard: null,
+        usedAI: false
+      };
+    }
+
+    if (intentId === "subscribe_interest") {
+      return {
+        reply: buildSubscribeInterestReply(),
+        actionCard: request.suggestedCard || "subscribe",
+        usedAI: false
+      };
+    }
+
+    if (intentId === "collaboration") {
+      return {
+        reply: buildCollaborationReply(),
+        actionCard: request.suggestedCard || "collaboration",
+        usedAI: false
+      };
+    }
+
+    if (intentId === "consulting_purchase") {
+      return {
+        reply: buildConsultingPurchaseReply(),
+        actionCard: request.suggestedCard || "bot_lead",
+        usedAI: false
+      };
+    }
+
+    if (
+      intentId === "novalink_info" ||
+      intentId === "novalink_story" ||
+      intentId === "novalink_services"
+    ) {
+      return {
+        reply: buildNovaLinkInfoReply(),
+        actionCard: null,
+        usedAI: false
+      };
+    }
+
+    if (intentId === "novabot_info") {
+      return {
+        reply: buildNovaBotInfoReply(),
+        actionCard: null,
+        usedAI: false
+      };
+    }
+
+    if (intentId === "out_of_scope") {
+      return {
+        reply: getRandomGenericReply(),
+        actionCard: null,
+        usedAI: false
+      };
+    }
+
+    if (intentId === "casual") {
+      return {
+        reply: getRandomGenericReply(),
+        actionCard: null,
+        usedAI: false
+      };
+    }
   }
 
-  if (intentId === "thanks_positive") {
-    return {
-      reply: buildThanksPositiveReply(),
-      actionCard: request.suggestedCard || "subscribe"
-    };
-  }
+  // 2) نية الذكاء الاصطناعي وتطوير الأعمال ONLY (أو تم إجبار AI من السيرفر)
 
-  if (intentId === "negative_mood") {
-    return {
-      reply: buildNegativeMoodReply(),
-      actionCard: null
-    };
-  }
-
-  if (intentId === "subscribe_interest") {
-    return {
-      reply: buildSubscribeInterestReply(),
-      actionCard: request.suggestedCard || "subscribe"
-    };
-  }
-
-  if (intentId === "collaboration") {
-    return {
-      reply: buildCollaborationReply(),
-      actionCard: request.suggestedCard || "collaboration"
-    };
-  }
-
-  if (intentId === "consulting_purchase") {
-    return {
-      reply: buildConsultingPurchaseReply(),
-      actionCard: request.suggestedCard || "bot_lead"
-    };
-  }
-
-  if (
-    intentId === "novalink_info" ||
-    intentId === "novalink_story" ||
-    intentId === "novalink_services"
-  ) {
-    return {
-      reply: buildNovaLinkInfoReply(),
-      actionCard: null
-    };
-  }
-
-  if (intentId === "novabot_info") {
-    return {
-      reply: buildNovaBotInfoReply(),
-      actionCard: null
-    };
-  }
-
-  if (intentId === "out_of_scope") {
-    return {
-      reply: getRandomGenericReply(),
-      actionCard: null
-    };
-  }
-
-  if (intentId === "casual") {
-    return {
-      reply: getRandomGenericReply(),
-      actionCard: null
-    };
-  }
-
-  // 2) نية الذكاء الاصطناعي وتطوير الأعمال ONLY
-
-  if (intentId === "ai_business" && shouldUseAI(intentId)) {
+  if (shouldUseAI(intentId, forceAI)) {
     const lower = userText.toLowerCase();
     const followupAr = ["أكمل", "تابع", "وضّح أكثر", "وضح أكثر", "تفاصيل أكثر"];
     const followupEn = ["continue", "more", "explain", "details", "go deeper"];
@@ -877,7 +910,8 @@ export async function novaBrainSystem(request = {}) {
       const replyHtml = buildStrongMatchReply(item);
       return {
         reply: replyHtml,
-        actionCard: request.suggestedCard || null
+        actionCard: request.suggestedCard || null,
+        usedAI: false
       };
     }
 
@@ -888,14 +922,19 @@ export async function novaBrainSystem(request = {}) {
 
       if (aiText) {
         replyHtml = wrapAiAnswerWithLink(aiText, item);
+        return {
+          reply: replyHtml,
+          actionCard: request.suggestedCard || null,
+          usedAI: true
+        };
       } else {
         replyHtml = buildMidMatchTemplateReply(item);
+        return {
+          reply: replyHtml,
+          actionCard: request.suggestedCard || null,
+          usedAI: false
+        };
       }
-
-      return {
-        reply: replyHtml,
-        actionCard: request.suggestedCard || null
-      };
     }
 
     // 2-هـ) لا يوجد تطابق كافٍ → Gemini بدون مقال
@@ -905,20 +944,23 @@ export async function novaBrainSystem(request = {}) {
       const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
       return {
         reply: safe,
-        actionCard: request.suggestedCard || null
+        actionCard: request.suggestedCard || null,
+        usedAI: true
       };
     }
 
     const fallback = buildNoMatchReply();
     return {
       reply: fallback,
-      actionCard: request.suggestedCard || null
+      actionCard: request.suggestedCard || null,
+      usedAI: false
     };
   }
 
-  // 3) أي شيء غير ملتقط
+  // 3) أي شيء غير ملتقط → رد تحفيزي عام
   return {
     reply: getRandomGenericReply(),
-    actionCard: null
+    actionCard: null,
+    usedAI: false
   };
 }
