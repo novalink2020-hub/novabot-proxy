@@ -1,5 +1,5 @@
 // ===========================================
-// novaBrainSystem.js – NovaBrainSystem PRO v2 (v7 tuned)
+// novaBrainSystem.js – NovaBrainSystem PRO v2 (v7 tuned → v7.1 with V5.2)
 // دماغ نوفا بوت الهجين: (نوايا + معرفة + Embeddings + Gemini)
 // By Mohammed Abu Snaina – NOVALINK.AI
 // ===========================================
@@ -88,18 +88,35 @@ function tokenize(str = "") {
 /* =============== تحميل قاعدة المعرفة =============== */
 
 // توحيد شكل عناصر المعرفة القادمة من knowledge.v5.json
+// مع دعم حقول V5.2 (subcategory, intent_hint, topic_keywords, embedding_text)
 function normalizeItem(item) {
   if (!item) return null;
+
+  const normalizedKeywords = Array.isArray(item.keywords)
+    ? item.keywords.map((k) => normalizeText(k)).filter(Boolean)
+    : [];
+
+  const normalizedTopicKeywords = Array.isArray(item.topic_keywords)
+    ? item.topic_keywords.map((k) => normalizeText(k)).filter(Boolean)
+    : [];
+
+  const embedding_text = (item.embedding_text || "").trim();
+
   return {
     title: (item.title || "").trim(),
     url: (item.url || "").trim(),
     description: (item.description || "").trim(),
     excerpt: (item.excerpt || "").trim(),
     summary: (item.summary || "").trim(),
+    summary_short: (item.summary_short || "").trim(),
+    summary_long: (item.summary_long || "").trim(),
     category: (item.category || "general").trim(),
-    keywords: Array.isArray(item.keywords)
-      ? item.keywords.map((k) => normalizeText(k)).filter(Boolean)
-      : []
+    subcategory: (item.subcategory || "").trim(),
+    intent_hint: (item.intent_hint || "").trim(),
+    keywords: normalizedKeywords,
+    topic_keywords: normalizedTopicKeywords,
+    embedding_text,
+    source: (item.source || "").trim()
   };
 }
 
@@ -210,14 +227,18 @@ async function ensureKnowledgeEmbeddings(items) {
   console.log("🧠 Building knowledge embeddings for", items.length, "items...");
   const embeddings = [];
   for (const item of items) {
+    // ✅ استخدام embedding_text من ملف المعرفة إن وجد
     const baseText =
-      (item.title || "") +
-      ". " +
-      (item.description || "") +
-      " " +
-      (item.summary || "") +
-      " " +
-      (item.excerpt || "");
+      (item.embedding_text && item.embedding_text.trim()) ||
+      [
+        item.title || "",
+        item.description || "",
+        item.summary || "",
+        item.excerpt || ""
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
     const emb = await embedText(baseText);
     embeddings.push(emb); // قد تكون null – لا مشكلة
   }
@@ -236,6 +257,9 @@ function keywordRoute(question = "", items = []) {
     items.find((it) =>
       needleList.some((n) => lowerTitle(it.title).includes(normalizeText(n)))
     );
+
+  const findByCategory = (cat) =>
+    items.find((it) => (it.category || "").toLowerCase() === cat.toLowerCase());
 
   // 1) التعليق الصوتي → مقال Murf vs ElevenLabs vs Daryjat
   if (
@@ -271,9 +295,28 @@ function keywordRoute(question = "", items = []) {
     q.includes("ما هي نوفا لينك") ||
     q.includes("ما هي novalink")
   ) {
-    const target = findByTitleIncludes(["من نحن", "about", "novalink"]);
+    const target =
+      findByTitleIncludes(["من نحن", "about", "novalink"]) ||
+      findByCategory("about");
     if (target) {
       return { item: target, score: 0.95 };
+    }
+  }
+
+  // 4) خدمات / استشارة → صفحة الخدمات (كـ fallback سريع داخل وضع AI)
+  if (
+    q.includes("خدمات") ||
+    q.includes("خدمة") ||
+    q.includes("استشارة") ||
+    q.includes("استشارات")
+  ) {
+    const target =
+      items.find((it) =>
+        (it.url || "").toLowerCase().includes("services-khdmat-nwfa-lynk")
+      ) || findByCategory("services");
+
+    if (target) {
+      return { item: target, score: 0.93 };
     }
   }
 
@@ -352,8 +395,23 @@ async function findBestMatch(question, items) {
       titleCommon /
         Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1) || 0;
 
-    // Keywords overlap
-    const keywordTokens = new Set(item.keywords || []);
+    // ✅ Keywords overlap (حقيقي) باستخدام keywords + topic_keywords ككلمات منفصلة
+    const keywordTokens = new Set();
+    (item.keywords || []).forEach((kw) => {
+      normalizeText(kw)
+        .split(" ")
+        .forEach((t) => {
+          if (t.length >= 3) keywordTokens.add(t);
+        });
+    });
+    (item.topic_keywords || []).forEach((kw) => {
+      normalizeText(kw)
+        .split(" ")
+        .forEach((t) => {
+          if (t.length >= 3) keywordTokens.add(t);
+        });
+    });
+
     let keywordCommon = 0;
     qTokens.forEach((t) => {
       if (keywordTokens.has(t)) keywordCommon++;
@@ -390,6 +448,15 @@ async function findBestMatch(question, items) {
         qNorm.includes("حكايتي")
       ) {
         categoryBoost += 0.08;
+      }
+    }
+    if (cat === "home" || cat === "about") {
+      if (
+        qNorm.includes("نوفا لينك") ||
+        qNorm.includes("novalink") ||
+        qNorm.includes("منصة")
+      ) {
+        categoryBoost += 0.05;
       }
     }
 
