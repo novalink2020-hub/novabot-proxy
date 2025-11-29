@@ -1,15 +1,15 @@
-// router.js
 // ===========================================================
-// router.js – NovaBot Smart Request Router v1.0
-// الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ
+// router.js – NovaBot Smart Request Router v1.1
+// الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ + ذاكرة المفاهيم (CKM)
 // ===========================================================
 
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
-// إعداد ذاكرة الجلسات
+// إعداد ذاكرة الجلسات (تاريخ + مفاهيم)
 const sessionMemory = new Map();
-const MAX_MEMORY_ENTRIES = 6; // 3 تبادلات (مستخدم+بوت)
+const MAX_HISTORY_ENTRIES = 6; // 3 تبادلات (مستخدم+بوت)
+const MAX_CONCEPTS = 10;
 const MEMORY_WINDOW = 3;
 
 // استخراج sessionId من الـ IP أو الـ x-forwarded-for
@@ -19,41 +19,85 @@ function getSessionId(req) {
   return req.socket.remoteAddress || "anonymous";
 }
 
+function getSession(sessionId) {
+  const existing = sessionMemory.get(sessionId);
+  if (existing) return existing;
+  const fresh = { history: [], concepts: [] };
+  sessionMemory.set(sessionId, fresh);
+  return fresh;
+}
+
+function saveSession(sessionId, session) {
+  session.history = (session.history || []).slice(-MAX_HISTORY_ENTRIES);
+  session.concepts = (session.concepts || []).slice(-MAX_CONCEPTS);
+  sessionMemory.set(sessionId, session);
+}
+
 // تاريخ الجلسة
 function getSessionHistory(sessionId) {
-  return sessionMemory.get(sessionId) || [];
+  const session = getSession(sessionId);
+  return session.history || [];
 }
 
 function pushToHistory(sessionId, entry) {
-  const arr = sessionMemory.get(sessionId) || [];
+  const session = getSession(sessionId);
+  const arr = session.history || [];
   arr.push({ ...entry, ts: Date.now() });
 
-  if (arr.length > MAX_MEMORY_ENTRIES) {
-    arr.splice(0, arr.length - MAX_MEMORY_ENTRIES);
+  if (arr.length > MAX_HISTORY_ENTRIES) {
+    arr.splice(0, arr.length - MAX_HISTORY_ENTRIES);
   }
-  sessionMemory.set(sessionId, arr);
+
+  session.history = arr;
+  saveSession(sessionId, session);
+}
+
+function updateConceptMemory(sessionId, concepts = []) {
+  const session = getSession(sessionId);
+  const normalized = concepts
+    .map((c) => (c || "").trim())
+    .filter((c) => c.length >= 2);
+
+  const merged = [...(session.concepts || []), ...normalized];
+  const dedup = [];
+  for (const c of merged) {
+    if (!c) continue;
+    if (!dedup.includes(c)) {
+      dedup.push(c);
+    }
+  }
+
+  session.concepts = dedup.slice(-MAX_CONCEPTS);
+  saveSession(sessionId, session);
+  return session.concepts;
+}
+
+function resetConceptMemory(sessionId) {
+  const session = getSession(sessionId);
+  session.concepts = [];
+  saveSession(sessionId, session);
 }
 
 // ========================
 // منطق إجبار AI
 // ========================
- function shouldForceAI(userMessage, analysis, history) {
-   const text = (userMessage || "").toLowerCase().trim();
+function shouldForceAI(userMessage, analysis, history) {
+  const text = (userMessage || "").toLowerCase().trim();
 
-   // لا نقوم بالإجبار في النوايا الثابتة أو خارج النطاق
-   const safeIntents = new Set([
-     "out_of_scope",
-     "greeting",
-     "thanks_positive",
-     "negative_mood",
-     "subscribe_interest",
-     "collaboration",
-     "consulting_purchase",
-     "novalink_info",
-     "novabot_info",
-     "novalink_story",
-     "novalink_services"
-   ]);
+  // لا نقوم بالإجبار في النوايا الثابتة أو خارج النطاق
+  const safeIntents = new Set([
+    "out_of_scope",
+    "greeting",
+    "thanks_positive",
+    "negative_mood",
+    "subscribe_interest",
+    "collaboration",
+    "consulting_purchase",
+    "novalink_info",
+    "novabot_info",
+    "novalink_story",
+    "novalink_services"
+  ]);
 
   if (safeIntents.has(analysis.intentId)) return false;
 
@@ -99,60 +143,129 @@ function pushToHistory(sessionId, entry) {
   return false;
 }
 
+function messageMatchesConcepts(text = "", concepts = []) {
+  const lower = text.toLowerCase();
+  return concepts.some((concept) => lower.includes(concept.toLowerCase()));
+}
+
+function hasPronounFollow(text = "") {
+  const pronouns = ["هذا", "هذه", "هي", "هو", "كيف نبدأ", "كيف نطوره", "كيف نطورها", "طيب كيف", "كيف نبدأ؟", "كيف نبدأ ?", "how do we start", "how to start", "how do we improve it", "how to improve it", "how do we develop it"];
+  const lower = text.toLowerCase();
+  return pronouns.some((p) => lower.includes(p.toLowerCase()));
+}
+
 // ===========================================================
 // 🔥 الواجهة الرئيسية للراوتر
 // ===========================================================
- export async function routeNovaRequest(req, userMessage) {
-   const sessionId = getSessionId(req);
-   const history = getSessionHistory(sessionId);
+export async function routeNovaRequest(req, userMessage) {
+  const sessionId = getSessionId(req);
+  const session = getSession(sessionId);
+  const history = session.history || [];
 
-   // 1) تحليل النية
-   const analysis = await detectNovaIntent(userMessage);
-   const originalIntentId = analysis.intentId;
+  // 1) تحليل النية
+  const analysis = await detectNovaIntent(userMessage);
+  const originalIntentId = analysis.intentId;
 
-   // 2) قرار إجبار AI
-   const forceAI = shouldForceAI(userMessage, analysis, history);
+  // 2) قرار إجبار AI
+  const forceAI = shouldForceAI(userMessage, analysis, history);
 
-   // 3) تعديل نية الطلب لو تم إجبار AI
-   let effectiveIntentId = analysis.intentId;
-   let effectiveSuggestedCard = analysis.suggestedCard || null;
+  // 3) تعديل نية الطلب لو تم إجبار AI
+  let effectiveIntentId = analysis.intentId;
+  let effectiveSuggestedCard = analysis.suggestedCard || null;
 
-   if (forceAI) {
-     effectiveIntentId = "ai_business";
-     effectiveSuggestedCard = null;
+  if (forceAI) {
+    effectiveIntentId = "ai_business";
+    effectiveSuggestedCard = null;
+  }
+
+  // 3.1) تعزيز الذاكرة السياقية (CKM)
+  let weightScore = (analysis.aiScore || 0) + (analysis.bizScore || 0);
+  let contextFollowing = false;
+
+  if (messageMatchesConcepts(userMessage || "", session.concepts || [])) {
+    weightScore += 3;
+    contextFollowing = true;
+  }
+
+  const pronounFollow =
+    hasPronounFollow(userMessage || "") && (session.concepts || []).length > 0;
+  if (pronounFollow) {
+    weightScore += 4;
+    effectiveIntentId = "ai_business";
+    contextFollowing = true;
+  }
+
+  if (forceAI) weightScore += 2;
+
+  // 3.2) تحديد مستوى الجلسة (sessionTier)
+  let sessionTier = "non_ai";
+  if (weightScore >= 7 || (contextFollowing && effectiveIntentId === "ai_business")) {
+    sessionTier = "strong_ai";
+  } else if (weightScore >= 4) {
+    sessionTier = "semi_ai";
   }
 
   // 4) تمرير الطلب للدماغ
   const brainReply = await novaBrainSystem({
-     message: userMessage,
-     ...analysis,
-     originalIntentId,
-     intentId: effectiveIntentId,
-     suggestedCard: effectiveSuggestedCard,
-     forceAI,
-     recentMessages: history
-   });
+    message: userMessage,
+    ...analysis,
+    originalIntentId,
+    intentId: effectiveIntentId,
+    suggestedCard: effectiveSuggestedCard,
+    forceAI,
+    recentMessages: history,
+    sessionConcepts: session.concepts || [],
+    sessionTier,
+    contextFollowing,
+    weightScore
+  });
 
-   // 5) حفظ في الذاكرة: مستخدم + بوت
-   const turnUsedAI = brainReply.usedAI === true;
-   const userHasAIIntent = originalIntentId === "ai_business";
+  // 5) حفظ في الذاكرة: مستخدم + بوت
+  const turnUsedAI = brainReply.usedAI === true;
+  const userHasAIIntent = originalIntentId === "ai_business";
 
-   pushToHistory(sessionId, {
-     role: "user",
-     text: userMessage,
-     intentId: originalIntentId,
-     effectiveIntentId,
-     hasAI: userHasAIIntent
-   });
+  pushToHistory(sessionId, {
+    role: "user",
+    text: userMessage,
+    intentId: originalIntentId,
+    effectiveIntentId,
+    hasAI: userHasAIIntent
+  });
 
-   pushToHistory(sessionId, {
-     role: "bot",
-     text: brainReply.reply,
-     intentId: effectiveIntentId,
-     hasAI: turnUsedAI
-   });
+  pushToHistory(sessionId, {
+    role: "bot",
+    text: brainReply.reply,
+    intentId: effectiveIntentId,
+    hasAI: turnUsedAI
+  });
 
-  // 6) إعادة الرد للـ server.js
+  // 6) تحديث ذاكرة المفاهيم
+  if (brainReply.resetConcepts) {
+    resetConceptMemory(sessionId);
+  } else if (Array.isArray(brainReply.extractedConcepts) && brainReply.extractedConcepts.length) {
+    updateConceptMemory(sessionId, brainReply.extractedConcepts);
+  }
+
+  const updatedConcepts = getSession(sessionId).concepts || [];
+
+  console.log("[CKM] concepts extracted:", brainReply.extractedConcepts || []);
+  console.log("[CKM] session concepts:", updatedConcepts);
+  console.log(
+    "[CKM] weight:",
+    weightScore,
+    "aiScore:",
+    analysis.aiScore || 0,
+    "sessionTier:",
+    sessionTier,
+    "maxTokens:",
+    brainReply.maxTokens,
+    "gemini:",
+    brainReply.geminiUsed,
+    "match:",
+    brainReply.matchType || "none"
+  );
+
+  // 7) إعادة الرد للـ server.js
   return {
     ok: true,
     reply: brainReply.reply,
