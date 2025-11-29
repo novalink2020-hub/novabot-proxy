@@ -22,37 +22,7 @@ let knowledgeSourceURL = DEFAULT_KNOWLEDGE_URL;
 
 // عتبات التطابق مع قاعدة المعرفة
 const STRONG_MATCH_THRESHOLD = 0.65; // تطابق قوي
-const MEDIUM_MATCH_THRESHOLD = 0.4;  // تطابق متوسط
-
-// كلمات مفتاحية لضبط النطاق (ذكاء اصطناعي / بزنس / إنتاجية)
-const DOMAIN_KEYWORDS = [
-  "ذكاء اصطناعي",
-  "الذكاء الاصطناعي",
-  "ai",
-  "gpt",
-  "gemini",
-  "برومبت",
-  "اوتوماتيشن",
-  "automation",
-  "اعمال",
-  "أعمال",
-  "business",
-  "بزنس",
-  "مشروع",
-  "مشروعي",
-  "startup",
-  "تسويق",
-  "مبيعات",
-  "marketing",
-  "sales",
-  "انتاجية",
-  "إنتاجية",
-  "productivity",
-  "novalink",
-  "نوفا لينك",
- "novabot",
- "نوفا بوت"
-];
+const MEDIUM_MATCH_THRESHOLD = 0.4; // تطابق متوسط
 
 // حزمة النصوص الرسمية لنوفا بوت
 const NOVABOT_TEXT_PACKAGE = {
@@ -94,6 +64,120 @@ function randomFrom(list = []) {
 }
 
 const getRandomGenericReply = () => randomFrom(NOVABOT_TEXT_PACKAGE.genericReplies);
+
+const ARABIC_STOPWORDS = new Set([
+  "من",
+  "في",
+  "على",
+  "الى",
+  "إلى",
+  "عن",
+  "أن",
+  "إن",
+  "ما",
+  "هذا",
+  "هذه",
+  "ذلك",
+  "هو",
+  "هي",
+  "هم",
+  "هن",
+  "كما",
+  "أو",
+  "و",
+  "يا",
+  "مع",
+  "ثم",
+  "قد",
+  "لقد",
+  "كان",
+  "كانت",
+  "يكون",
+  "لدي",
+  "لدينا",
+  "لكل",
+  "أي",
+  "اي",
+  "أية",
+  "اية",
+  "كيف",
+  "لماذا",
+  "متى",
+  "أين",
+  "اين",
+  "مازال",
+  "ما زال",
+  "ليست",
+  "ليس",
+  "لا",
+  "لم",
+  "لن",
+  "هل",
+  "او",
+  "الى",
+  "حتى",
+  "بعد",
+  "قبل",
+  "بين",
+  "كل",
+  "أي",
+  "أيضا",
+  "ايضاً",
+  "ايضا"
+]);
+
+const EN_STOPWORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "and",
+  "or",
+  "for",
+  "to",
+  "of",
+  "in",
+  "on",
+  "with",
+  "by",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "how",
+  "what",
+  "why",
+  "where",
+  "when",
+  "which",
+  "that",
+  "this",
+  "it",
+  "its",
+  "their",
+  "they",
+  "them",
+  "our",
+  "we",
+  "you",
+  "your",
+  "as",
+  "at",
+  "from",
+  "about",
+  "into",
+  "more",
+  "less",
+  "any",
+  "some",
+  "can",
+  "could",
+  "should",
+  "would",
+  "may",
+  "might"
+]);
 
 // كاش للمعرفة + Embeddings
 let knowledgeCache = null;
@@ -519,9 +603,62 @@ function detectAISession(currentIntentId, sessionHistory = []) {
   });
 }
 
+/* =============== استخراج المفاهيم من ردود البوت =============== */
+
+function splitSentences(text = "") {
+  return (text || "")
+    .replace(/\n+/g, " ")
+    .split(/[.!؟?؛؛]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function tokenizeForConcepts(sentence = "") {
+  const normalized = normalizeText(sentence);
+  const words = normalized.split(" ").filter(Boolean);
+  const filtered = [];
+  for (const w of words) {
+    if (w.length < 2) continue;
+    if (ARABIC_STOPWORDS.has(w) || EN_STOPWORDS.has(w)) continue;
+    filtered.push(w);
+  }
+  return filtered;
+}
+
+function buildNGrams(tokens = [], min = 2, max = 4) {
+  const grams = [];
+  for (let n = min; n <= max; n++) {
+    for (let i = 0; i <= tokens.length - n; i++) {
+      grams.push(tokens.slice(i, i + n).join(" "));
+    }
+  }
+  return grams;
+}
+
+function createConceptList(botReplyText = "") {
+  const sentences = splitSentences(botReplyText);
+  const candidates = [];
+  for (const s of sentences) {
+    const tokens = tokenizeForConcepts(s);
+    if (tokens.length < 2) continue;
+    const grams = buildNGrams(tokens, 2, 4);
+    candidates.push(...grams);
+  }
+
+  const dedup = [];
+  for (const c of candidates) {
+    if (!c) continue;
+    if (!dedup.includes(c)) {
+      dedup.push(c);
+    }
+  }
+
+  return dedup.slice(0, 12);
+}
+
 /* =============== استدعاء Gemini =============== */
 
-function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false) {
+function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false, recentConcepts = []) {
   const lang = analysis.language === "en" ? "en" : "ar";
   const intentId = analysis.intentId || "explore";
 
@@ -534,11 +671,18 @@ function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false) {
   base += `- language: ${lang}\n`;
   base += `- dialectHint: ${analysis.dialectHint || "msa"}\n`;
   base += `- toneHint: ${analysis.toneHint || "neutral"}\n`;
+  base += `- contextFollowing: ${analysis.contextFollowing === true ? "yes" : "no"}\n`;
   if (analysis.suggestedCard) {
     base += `- suggestedCard: ${analysis.suggestedCard}\n`;
   }
   if (bestItem) {
     base += `- Related article title: ${bestItem.title || ""}\n`;
+  }
+
+  const conceptList = (recentConcepts || []).slice(-3).filter(Boolean);
+  if (conceptList.length) {
+    base += `- Key recent concepts: ${conceptList.join(" | ")}\n`;
+    base += `Use these concepts for continuity and cohesion with previous turns.\n`;
   }
 
   if (isFollowup) {
@@ -560,14 +704,21 @@ function buildGeminiPrompt(userText, analysis, bestItem, isFollowup = false) {
   return base;
 }
 
-async function callGemini(userText, analysis, bestItem = null, isFollowup = false, maxTokens = 200) {
+async function callGemini(
+  userText,
+  analysis,
+  bestItem = null,
+  isFollowup = false,
+  maxTokens = 200,
+  recentConcepts = []
+) {
   if (!genAI || !GEMINI_API_KEY || maxTokens <= 0) {
     console.log("⚠️ Gemini disabled or maxTokens <= 0.");
     return null;
   }
 
   const lang = analysis.language === "en" ? "en" : "ar";
-  const prompt = buildGeminiPrompt(userText, analysis, bestItem, isFollowup);
+  const prompt = buildGeminiPrompt(userText, analysis, bestItem, isFollowup, recentConcepts);
 
   const generationConfig = {
     maxOutputTokens: maxTokens,
@@ -738,6 +889,8 @@ export async function novaBrainSystem(request) {
   const effectiveIntentId = request.intentId || originalIntentId;
   const language = request.language || "ar";
   const forceAI = request.forceAI === true;
+  const sessionTier = request.sessionTier || "non_ai";
+  const sessionConcepts = Array.isArray(request.sessionConcepts) ? request.sessionConcepts : [];
 
   const sessionHistory = Array.isArray(request.recentMessages)
     ? request.recentMessages
@@ -753,7 +906,11 @@ export async function novaBrainSystem(request) {
     return {
       reply: getRandomGenericReply(),
       actionCard: null,
-      usedAI: false
+      usedAI: false,
+      extractedConcepts: [],
+      resetConcepts: false,
+      maxTokens: 0,
+      geminiUsed: false
     };
   }
 
@@ -765,7 +922,11 @@ export async function novaBrainSystem(request) {
     return {
       reply,
       actionCard: "developer_identity",
-      usedAI: false
+      usedAI: false,
+      extractedConcepts: createConceptList(reply),
+      resetConcepts: false,
+      maxTokens: 0,
+      geminiUsed: false
     };
   }
 
@@ -774,92 +935,101 @@ export async function novaBrainSystem(request) {
     return {
       reply: buildGoodbyeReply(),
       actionCard: null,
-      usedAI: false
+      usedAI: false,
+      extractedConcepts: createConceptList(NOVABOT_TEXT_PACKAGE.goodbye),
+      resetConcepts: true,
+      maxTokens: 0,
+      geminiUsed: false
     };
   }
 
   // 0.3) خارج النطاق دائمًا بدون AI
   if (originalIntentId === "out_of_scope") {
+    const reply = getRandomGenericReply();
     return {
-      reply: getRandomGenericReply(),
+      reply,
       actionCard: null,
-      usedAI: false
+      usedAI: false,
+      extractedConcepts: createConceptList(reply),
+      resetConcepts: false,
+      maxTokens: 0,
+      geminiUsed: false
     };
   }
+
+  const isAIQuestionFlag = effectiveIntentId === "ai_business";
+  const isAISessionFlag = detectAISession(effectiveIntentId, sessionHistory);
+
+  const finalizeResponse = (
+    reply,
+    meta = {
+      actionCard: null,
+      usedAI: false,
+      geminiUsed: false,
+      matchType: "none",
+      maxTokens: 0
+    }
+  ) => {
+    const extracted = createConceptList(reply);
+    return {
+      reply,
+      actionCard: meta.actionCard || null,
+      usedAI: meta.usedAI || false,
+      extractedConcepts: extracted,
+      resetConcepts: false,
+      geminiUsed: meta.geminiUsed || false,
+      matchType: meta.matchType || "none",
+      maxTokens: meta.maxTokens || 0
+    };
+  };
 
   // 1) نوايا ثابتة (طالما لسنا مجبرين على AI)
   if (!forceAI) {
     if (originalIntentId === "greeting") {
-      return {
-        reply: buildGreetingReply(sessionHistory.length > 0),
-        actionCard: null,
-        usedAI: false
-      };
+      const reply = buildGreetingReply(sessionHistory.length > 0);
+      return finalizeResponse(reply);
     }
 
     if (originalIntentId === "thanks_positive") {
-      return {
-        reply: buildThanksPositiveReply(),
-        actionCard: request.suggestedCard || "subscribe",
-        usedAI: false
-      };
+      const reply = buildThanksPositiveReply();
+      return finalizeResponse(reply, { actionCard: request.suggestedCard || "subscribe" });
     }
 
     if (originalIntentId === "negative_mood") {
-      return {
-        reply: buildNegativeMoodReply(),
-        actionCard: null,
-        usedAI: false
-      };
+      const reply = buildNegativeMoodReply();
+      return finalizeResponse(reply);
     }
 
     if (originalIntentId === "subscribe_interest") {
-      return {
-        reply: buildSubscribeInterestReply(),
-        actionCard: request.suggestedCard || "subscribe",
-        usedAI: false
-      };
+      const reply = buildSubscribeInterestReply();
+      return finalizeResponse(reply, { actionCard: request.suggestedCard || "subscribe" });
     }
 
     if (originalIntentId === "collaboration") {
-      return {
-        reply: buildCollaborationReply(),
-        actionCard: request.suggestedCard || "collaboration",
-        usedAI: false
-      };
+      const reply = buildCollaborationReply();
+      return finalizeResponse(reply, {
+        actionCard: request.suggestedCard || "collaboration"
+      });
     }
 
     if (originalIntentId === "consulting_purchase") {
-      return {
-        reply: buildConsultingPurchaseReply(),
-        actionCard: request.suggestedCard || "bot_lead",
-        usedAI: false
-      };
+      const reply = buildConsultingPurchaseReply();
+      return finalizeResponse(reply, { actionCard: request.suggestedCard || "bot_lead" });
     }
 
     if (originalIntentId === "novalink_info") {
-      return {
-        reply: buildNovaLinkInfoReply(),
-        actionCard: null,
-        usedAI: false
-      };
+      const reply = buildNovaLinkInfoReply();
+      return finalizeResponse(reply);
     }
 
     if (originalIntentId === "novabot_info") {
-      return {
-        reply: buildNovaBotInfoReply(),
-        actionCard: null,
-        usedAI: false
-      };
+      const reply = buildNovaBotInfoReply();
+      return finalizeResponse(reply);
     }
 
     if (originalIntentId === "out_of_scope" || originalIntentId === "casual") {
-      if (!isAISession && !isAIQuestion) {
-        return {
-          reply: getRandomGenericReply(),
-          actionCard: null,
-          usedAI: false
-        };
+      if (!isAISessionFlag && !isAIQuestionFlag) {
+        return finalizeResponse(getRandomGenericReply());
       }
       // لو الجلسة AI لكن النية casual سنسمح لـ Gemini لاحقًا
     }
@@ -881,43 +1051,48 @@ export async function novaBrainSystem(request) {
   // 2-أ) تطابق قوي → رد مؤتمت + رابط فقط (بدون Gemini)
   if (item && score >= STRONG_MATCH_THRESHOLD) {
     const replyHtml = buildStrongMatchReply(item);
-    return {
-      reply: replyHtml,
+    return finalizeResponse(replyHtml, {
       actionCard: request.suggestedCard || null,
-      usedAI: false
-    };
+      matchType: "strong_match",
+      maxTokens: 0
+    });
   }
 
   // 2-ب) تطابق متوسط → Gemini قصير + رابط (maxTokens = 100)
   if (item && score >= MEDIUM_MATCH_THRESHOLD) {
-    const aiText = await callGemini(userText, request, item, false, 100);
+    const aiText = await callGemini(
+      userText,
+      request,
+      item,
+      false,
+      100,
+      sessionConcepts
+    );
 
     if (aiText) {
       const replyHtml = wrapAiAnswerWithLink(aiText, item);
-      return {
-        reply: replyHtml,
+      return finalizeResponse(replyHtml, {
         actionCard: request.suggestedCard || null,
-        usedAI: true
-      };
+        usedAI: true,
+        geminiUsed: true,
+        matchType: "medium_match",
+        maxTokens: 100
+      });
     }
 
     const replyHtml = buildMidMatchTemplateReply(item);
-    return {
-      reply: replyHtml,
+    return finalizeResponse(replyHtml, {
       actionCard: request.suggestedCard || null,
-      usedAI: false
-    };
+      matchType: "medium_match",
+      maxTokens: 0
+    });
   }
 
   // 2-ج) لا تطابق قوي/متوسط → نقرر منطق الجلسة + نوع السؤال
 
   // جلسة غير AI + سؤال غير AI + بدون إجبار → من الردود التحفيزية
   if (!isAISession && !isAIQuestion && !forceAI) {
-    return {
-      reply: getRandomGenericReply(),
-      actionCard: null,
-      usedAI: false
-    };
+    return finalizeResponse(getRandomGenericReply());
   }
 
   // كشف طلبات "أكمل / تابع / تعمق"
@@ -938,29 +1113,43 @@ export async function novaBrainSystem(request) {
     followupAr.some((kw) => userText.includes(kw)) ||
     followupEn.some((kw) => lower.includes(kw));
 
-  // جدول maxTokens وفق السياسة الصارمة
-  // AI + AI session → 200
-  // non-AI + AI session → 100
-  // non-AI + non-AI session → 0 (تمت معالجتها أعلاه)
-  const maxTokens = isAISession ? (isAIQuestion ? 200 : 100) : 0;
+  // جدول maxTokens وفق السياسة + تكييف القوة
+  const baseTokens = isAISession ? (isAIQuestion ? 200 : 100) : 0;
+  let maxTokens = baseTokens;
+  if (baseTokens > 0) {
+    if (sessionTier === "strong_ai") {
+      maxTokens = Math.min(200, baseTokens + 60);
+    } else if (sessionTier === "semi_ai") {
+      maxTokens = Math.min(180, baseTokens + 30);
+    }
+  }
 
-  const aiText = await callGemini(userText, request, null, isFollowup, maxTokens);
+  const aiText = await callGemini(
+    userText,
+    request,
+    null,
+    isFollowup,
+    maxTokens,
+    sessionConcepts
+  );
 
   if (aiText) {
     const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
-    return {
-      reply: safe, // لا روابط هنا، الروابط فقط في التطابقات مع المعرفة
+    return finalizeResponse(safe, {
       actionCard: request.suggestedCard || null,
-      usedAI: true
-    };
+      usedAI: true,
+      geminiUsed: true,
+      matchType: "direct_ai",
+      maxTokens
+    });
   }
 
   // فشل Gemini بالكامل → fallback (بدون روابط)
   const fallback = buildAutomatedFallbackReply();
 
-  return {
-    reply: fallback,
+  return finalizeResponse(fallback, {
     actionCard: request.suggestedCard || null,
-    usedAI: false
-  };
+    matchType: "fallback",
+    maxTokens
+  });
 }
