@@ -15,6 +15,19 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type"
 };
 
+const HEALTH_PATHS = new Set(["/", "/health", "/status"]);
+const MAX_BODY_SIZE = 1_000_000; // ~1MB safety limit
+
+const normalizePath = (rawPath = "") => {
+  const [pathOnly] = rawPath.split("?");
+  if (!pathOnly) return "/";
+
+  if (pathOnly === "/") return "/";
+
+  const trimmed = pathOnly.replace(/\/+$/, "");
+  return trimmed || "/";
+};
+
 // -----------------------------
 // تهيئة السيرفر
 // -----------------------------
@@ -27,15 +40,26 @@ const server = http.createServer(async (req, res) => {
   });
 
   // Health Check
-  if (req.method === "GET") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(
-      JSON.stringify({
+  if (req.method === "GET" || req.method === "HEAD") {
+    const pathOnly = normalizePath(req.url || "");
+
+    if (pathOnly === "/favicon.ico") {
+      res.writeHead(204);
+      return res.end();
+    }
+
+    if (HEALTH_PATHS.has(pathOnly)) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      const payload = {
         ok: true,
         status: "NovaBot Brain running",
         timestamp: Date.now()
-      })
-    );
+      };
+      return res.end(req.method === "HEAD" ? undefined : JSON.stringify(payload));
+    }
+
+    res.writeHead(404, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ error: "Not found" }));
   }
 
   if (req.method === "OPTIONS") {
@@ -49,12 +73,39 @@ const server = http.createServer(async (req, res) => {
   }
 
   // قراءة البودي
-  let body = "";
-  req.on("data", (chunk) => (body += chunk));
+  const chunks = [];
+  let totalBytes = 0;
+  let tooLarge = false;
+
+  req.on("data", (chunk) => {
+    if (tooLarge) return;
+
+    totalBytes += chunk.length;
+    if (totalBytes > MAX_BODY_SIZE) {
+      tooLarge = true;
+      res.writeHead(413, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Payload too large" }));
+      req.destroy();
+      return;
+    }
+
+    chunks.push(chunk);
+  });
 
   req.on("end", async () => {
+    if (tooLarge) return;
+
+    let data;
+
     try {
-      const data = JSON.parse(body || "{}");
+      const body = Buffer.concat(chunks).toString() || "{}";
+      data = JSON.parse(body);
+    } catch (parseErr) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Invalid JSON" }));
+    }
+
+    try {
       const userMessage = (data.message || "").trim();
 
       if (!userMessage) {
