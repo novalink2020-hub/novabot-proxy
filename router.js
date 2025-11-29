@@ -1,182 +1,137 @@
-// ======================================================
-// router.js – NovaBot AI Decision Router (Stable v1.0)
-// مسؤول عن:
-// - اتخاذ قرار AI vs Non-AI
-// - حساب maxTokens
-// - منع الروابط في غير محلها
-// - إدارة البطاقات
-// - تهيئة الطلب النهائي للدماغ
-// By Mohammed Abu Snaina – NOVALINK.AI
-// ======================================================
+// ===========================================================
+// router.js – NovaBot Smart Request Router v1.0
+// الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ
+// ===========================================================
 
 import { detectNovaIntent } from "./novaIntentDetector.js";
-import { findKnowledgeMatch } from "./knowledgeEngine.js";
+import { novaBrainSystem } from "./novaBrainSystem.js";
 
-// ------------------------------------------------------
-// 🧠 Session Memory Helpers
-// (سيستخدمه السيرفر فقط للتمرير)
-// ------------------------------------------------------
+// إعداد ذاكرة الجلسات
+const sessionMemory = new Map();
+const MAX_MEMORY_ENTRIES = 6; // 3 تبادلات (مستخدم+بوت)
+const MEMORY_WINDOW = 3;
 
-export function detectAISession(intentId, recentMsgs = []) {
-  if (intentId === "ai_business") return true;
-
-  const lastUserMsgs = recentMsgs
-    .filter((m) => m && m.role === "user")
-    .slice(-3);
-
-  return lastUserMsgs.some((m) => m.intentId === "ai_business");
+// استخراج sessionId من الـ IP أو الـ x-forwarded-for
+function getSessionId(req) {
+  const xf = req.headers["x-forwarded-for"];
+  if (xf) return xf.split(",")[0].trim();
+  return req.socket.remoteAddress || "anonymous";
 }
 
-// ------------------------------------------------------
-// 🔥 forceAI (إجبار الذكاء الاصطناعي)
-// ------------------------------------------------------
+// تاريخ الجلسة
+function getSessionHistory(sessionId) {
+  return sessionMemory.get(sessionId) || [];
+}
 
-function computeForceAI(message, analysis, history) {
-  const text = (message || "").toLowerCase().trim();
+function pushToHistory(sessionId, entry) {
+  const arr = sessionMemory.get(sessionId) || [];
+  arr.push({ ...entry, ts: Date.now() });
 
-  // 1) أي سؤال ينتهي بـ ؟
+  if (arr.length > MAX_MEMORY_ENTRIES) {
+    arr.splice(0, arr.length - MAX_MEMORY_ENTRIES);
+  }
+  sessionMemory.set(sessionId, arr);
+}
+
+// ========================
+// منطق إجبار AI
+// ========================
+function shouldForceAI(userMessage, analysis, history) {
+  const text = (userMessage || "").toLowerCase().trim();
+
+  // 1) كلمات أدوات ذكاء اصطناعي
+  const aiHints = [
+    "chatgpt",
+    "gpt",
+    "gemini",
+    "جيميني",
+    "midjourney",
+    "murf",
+    "elevenlabs",
+    "دريجات",
+    "notion ai",
+    "copilot",
+    "llm",
+    "تعليق صوتي",
+    "voice over"
+  ];
+
+  if (aiHints.some((kw) => text.includes(kw))) return true;
+
+  // 2) سؤال واضح ينتهي بـ ؟
   if (text.endsWith("?")) return true;
 
-  // 2) كلمات AI + أدوات شهيرة
-  const aiWords = [
-    "ذكاء", "ai", "gpt", "chatgpt", "gemini", "تعليق صوتي",
-    "voice", "نموذج لغوي", "llm", "محتوى", "تسويق", "seo"
-  ];
-  if (aiWords.some((w) => text.includes(w))) return true;
+  // 3) يبدأ بكلمات سؤال عربية/إنجليزية
+  const qAr = ["ما ", "ماذا", "كيف", "لماذا", "هل ", "اشرح", "فسّر", "عرف"];
+  const qEn = ["what", "why", "how", "when", "where", "explain", "define", "help me"];
 
-  // 3) starters (كيف / ما / why / how)
-  const startersAr = ["ما ", "ماذا", "كيف", "لماذا", "اشرح", "عرف", "فسر"];
-  const startersEn = ["what", "why", "how", "when", "explain", "define"];
-  if (startersAr.some((s) => text.startsWith(s))) return true;
-  if (startersEn.some((s) => text.startsWith(s))) return true;
-
-  // 4) استمرار جلسة AI
-  const last = [...history].slice(-3);
-  if (last.some((m) => m.hasAI)) return true;
-
-  return false;
-}
-
-// ------------------------------------------------------
-// 🎯 maxTokens Table (القواعد الرسمية)
-// ------------------------------------------------------
-
-function getMaxTokens(isAIQuestion, isAISession, matchType) {
-  // strong match
-  if (matchType === "strong") return 0;
-
-  // medium match
-  if (matchType === "medium") return 100;
-
-  // سؤال AI في جلسة AI
-  if (isAIQuestion && isAISession) return 200;
-
-  // سؤال غير AI في جلسة AI
-  if (!isAIQuestion && isAISession) return 100;
-
-  // جلسة غير AI → بدون AI
-  return 0;
-}
-
-// ------------------------------------------------------
-// 🎛️ كيف نحدد allowedLinks؟
-// ------------------------------------------------------
-
-function determineAllowedLinks(matchType, isAIResponse) {
-  // الروابط فقط في strong + medium
-  if (matchType === "strong" || matchType === "medium") return true;
-
-  // ممنوع الروابط في AI pure
-  if (isAIResponse) return false;
-
-  // ممنوع الروابط في النوايا الثابتة أو التحفيز
-  return false;
-}
-
-// ------------------------------------------------------
-// 🟦 إدارة البطاقات الخمسة
-// ------------------------------------------------------
-
-function resolveActionCard(intentId, suggestedCard, matchType, forceAI) {
-  // ممنوع أثناء forceAI
-  if (forceAI) return null;
-
-  // ممنوع أثناء strong/medium
-  if (matchType === "strong" || matchType === "medium") return null;
-
-  // أولوية البطاقات
-  const order = [
-    "developer_identity",
-    "consulting_purchase",
-    "collaboration",
-    "subscribe",
-    "bot_lead"
-  ];
-
-  // suggestedCard لها أولوية فقط لو ضمن القائمة
-  if (suggestedCard && order.includes(suggestedCard)) return suggestedCard;
-
-  // intent → card mapping
-  const map = {
-    consulting_purchase: "bot_lead",
-    collaboration: "collaboration",
-    subscribe_interest: "subscribe"
-  };
-
-  if (map[intentId]) return map[intentId];
-
-  return null;
-}
-
-// ------------------------------------------------------
-// 🧭 تابع رئيسي — router()
-// ------------------------------------------------------
-
-export async function router({ message, history = [] }) {
-  // 1) تحليل النوايا
-  const analysis = await detectNovaIntent(message);
-  let intentId = analysis.intentId;
-  let suggestedCard = analysis.suggestedCard;
-
-  // 2) قرار هل نجبر AI
-  const forceAI = computeForceAI(message, analysis, history);
-
-  if (forceAI) {
-    intentId = "ai_business";
-    suggestedCard = null;
+  if (qAr.some((kw) => text.startsWith(kw)) || qEn.some((kw) => text.startsWith(kw))) {
+    return true;
   }
 
-  // 3) تحديد نوع الجلسة actuelle
-  const isAISession = detectAISession(intentId, history);
-  const isAIQuestion = intentId === "ai_business";
+  // 4) سياق جلسة AI
+  const last = [...history].slice(-MEMORY_WINDOW);
+  const recentAI = last.some((m) => m.hasAI === true);
 
-  // 4) البحث عن أفضل تطابق في المعرفة
-  const { type: matchType, item } = await findKnowledgeMatch(message);
+  if (recentAI) {
+    const endings = ["شكرا", "شكراً", "thanks", "thank you", "bye"];
+    if (!endings.includes(text)) return true;
+  }
 
-  // 5) تحديد maxTokens
-  const maxTokens = getMaxTokens(isAIQuestion, isAISession, matchType);
+  return false;
+}
 
-  // 6) تحديد السماح بالروابط
-  const allowLinks = determineAllowedLinks(matchType, maxTokens > 0);
+// ===========================================================
+// 🔥 الواجهة الرئيسية للراوتر
+// ===========================================================
+export async function routeNovaRequest(req, userMessage) {
+  const sessionId = getSessionId(req);
+  const history = getSessionHistory(sessionId);
 
-  // 7) بطاقة الأكشن
-  const actionCard = resolveActionCard(intentId, suggestedCard, matchType, forceAI);
+  // 1) تحليل النية
+  const analysis = await detectNovaIntent(userMessage);
 
-  // 8) بناء الطلب النهائي للدماغ
+  // 2) قرار إجبار AI
+  const forceAI = shouldForceAI(userMessage, analysis, history);
+
+  // 3) تعديل نية الطلب لو تم إجبار AI
+  let effectiveIntentId = analysis.intentId;
+  let effectiveSuggestedCard = analysis.suggestedCard || null;
+
+  if (forceAI) {
+    effectiveIntentId = "ai_business";
+    effectiveSuggestedCard = null;
+  }
+
+  // 4) تمرير الطلب للدماغ
+  const brainReply = await novaBrainSystem({
+    message: userMessage,
+    ...analysis,
+    intentId: effectiveIntentId,
+    suggestedCard: effectiveSuggestedCard,
+    forceAI,
+    sessionHistory: history
+  });
+
+  // 5) حفظ في الذاكرة: مستخدم + بوت
+  pushToHistory(sessionId, {
+    role: "user",
+    text: userMessage,
+    intentId: effectiveIntentId,
+    hasAI: false
+  });
+
+  pushToHistory(sessionId, {
+    role: "bot",
+    text: brainReply.reply,
+    intentId: effectiveIntentId,
+    hasAI: brainReply.usedAI === true
+  });
+
+  // 6) إعادة الرد للـ server.js
   return {
-    cleanRequest: {
-      message,
-      language: analysis.language,
-      dialectHint: analysis.dialectHint,
-      intentId,
-      forceAI,
-      isAIQuestion,
-      isAISession,
-      matchType,
-      bestItem: item,
-      maxTokens,
-      allowLinks,
-      actionCard
-    }
+    ok: true,
+    reply: brainReply.reply,
+    actionCard: brainReply.actionCard || null
   };
 }
