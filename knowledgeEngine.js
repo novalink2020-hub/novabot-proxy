@@ -1,275 +1,263 @@
-// =====================================================
-// knowledgeEngine.js – NovaBot Stable Knowledge Engine
+// ==========================================================
+// knowledgeEngine.js – NovaLink Knowledge Engine (Stable v1.0)
 // مسؤول عن:
-// - تحميل ملف المعرفة V5
+// - تحميل ملف المعرفة v5
 // - تنظيف العناصر
-// - حساب الـ embeddings
-// - Keyword Routing
-// - Similarity Search
-// By Mohammed Abu Snaina – NOVALINK Ai
-// =====================================================
+// - بناء embeddings
+// - keyword routing
+// - حساب التطابق (strong/medium/none)
+// By Mohammed Abu Snaina – NOVALINK.AI
+// ==========================================================
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// ==========================
-// إعدادات عامة
-// ==========================
+// ---------------------------------------------
+// إعدادات
+// ---------------------------------------------
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || "";
 const KNOWLEDGE_URL =
   process.env.KNOWLEDGE_V5_URL ||
   process.env.KNOWLEDGE_JSON_URL ||
   "";
 
-const KNOWLEDGE_TTL_MS = 12 * 60 * 60 * 1000; // 12 ساعة
-const STRONG_MATCH_THRESHOLD = 0.65;
-const MEDIUM_MATCH_THRESHOLD = 0.4;
-
-// ==========================
-// متغيرات داخلية
-// ==========================
-let knowledgeCache = null;
-let knowledgeLoadedAt = 0;
-let knowledgeEmbeddings = null;
-let embedModel = null;
-
-// ==========================
-// Gemini Client
-// ==========================
 let genAI = null;
 if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 }
 
-// ==========================
-// أدوات مساعدة بسيطة
-// ==========================
-function normalizeText(str = "") {
+// كاش المعرفة
+let knowledgeCache = null;
+let knowledgeEmbeddings = null;
+let lastLoadTime = 0;
+
+const KNOWLEDGE_TTL = 12 * 60 * 60 * 1000; // 12 ساعة
+
+// ---------------------------------------------
+// أدوات مساعدة للنص
+// ---------------------------------------------
+function normalize(str = "") {
   return str
     .toLowerCase()
-    .replace(/[.,!?؟،"“”()\-_:;«»[\]]/g, " ")
+    .replace(/[.,!?؟،"“”()\-_:;«»[\]/]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function tokenize(str = "") {
-  return new Set(
-    normalizeText(str)
-      .split(" ")
-      .filter((w) => w.length >= 3)
-  );
+  return new Set(normalize(str).split(" ").filter((w) => w.length >= 3));
 }
 
-export function cosineSimilarity(A, B) {
-  if (!A || !B || A.length !== B.length) return 0;
-  let dot = 0;
-  for (let i = 0; i < A.length; i++) dot += A[i] * B[i];
-  return dot;
-}
-
-// ==========================
-// تطبيع عنصر معرفي واحد
-// ==========================
-function normalizeItem(item) {
-  if (!item) return null;
-  return {
-    title: (item.title || "").trim(),
-    url: (item.url || "").trim(),
-    description: (item.description || "").trim(),
-    excerpt: (item.excerpt || "").trim(),
-    summary: (item.summary || "").trim(),
-    category: (item.category || "general").trim(),
-    keywords: Array.isArray(item.keywords)
-      ? item.keywords.map((k) => normalizeText(k)).filter(Boolean)
-      : [],
-  };
-}
-
-// ==========================
-// تحميل المعرفة مع كاش 12 ساعة
-// ==========================
-export async function loadKnowledgeBase() {
+// ---------------------------------------------
+// تحميل ملف المعرفة
+// ---------------------------------------------
+async function loadKnowledge() {
   if (!KNOWLEDGE_URL) {
-    console.warn("⚠️ No KNOWLEDGE URL set.");
+    console.warn("⚠️ No knowledge URL provided.");
+    knowledgeCache = [];
     return [];
   }
 
   const now = Date.now();
-  if (knowledgeCache && now - knowledgeLoadedAt < KNOWLEDGE_TTL_MS) {
+  if (knowledgeCache && now - lastLoadTime < KNOWLEDGE_TTL) {
     return knowledgeCache;
   }
 
   try {
     const res = await fetch(KNOWLEDGE_URL);
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) throw new Error("Failed knowledge fetch " + res.status);
 
     const json = await res.json();
-    const cleaned = Array.isArray(json)
-      ? json.map(normalizeItem).filter((x) => x && x.url && x.title)
+
+    knowledgeCache = Array.isArray(json)
+      ? json
+          .map((item) => ({
+            title: item.title?.trim() || "",
+            url: item.url?.trim() || "",
+            description: item.description?.trim() || "",
+            excerpt: item.excerpt?.trim() || "",
+            summary: item.summary?.trim() || "",
+            category: item.category || "general",
+            keywords: Array.isArray(item.keywords)
+              ? item.keywords.map((k) => normalize(k))
+              : []
+          }))
+          .filter((x) => x.title && x.url)
       : [];
 
-    knowledgeCache = cleaned;
-    knowledgeLoadedAt = now;
-    knowledgeEmbeddings = null; // rebuild when needed
+    lastLoadTime = now;
+    knowledgeEmbeddings = null;
 
-    console.log("✅ Knowledge loaded. Items:", cleaned.length);
-    return cleaned;
+    console.log("📚 Knowledge loaded:", knowledgeCache.length);
+    return knowledgeCache;
   } catch (err) {
     console.error("❌ Knowledge load error:", err);
     knowledgeCache = [];
-    knowledgeLoadedAt = now;
-    knowledgeEmbeddings = null;
     return [];
   }
 }
 
-// ==========================
+// ---------------------------------------------
 // Embeddings
-// ==========================
-async function ensureEmbedModel() {
+// ---------------------------------------------
+async function getEmbedModel() {
   if (!genAI) return null;
-  if (!embedModel) {
-    embedModel = genAI.getGenerativeModel({
-      model: "text-embedding-004",
-    });
-  }
-  return embedModel;
+  return genAI.getGenerativeModel({ model: "text-embedding-004" });
 }
 
-async function embedText(text = "") {
+async function embed(text = "") {
   try {
-    const model = await ensureEmbedModel();
+    const model = await getEmbedModel();
     if (!model) return null;
 
     const clean = text.trim();
     if (!clean) return null;
 
-    const r = await model.embedContent({
-      content: { parts: [{ text: clean }] },
+    const result = await model.embedContent({
+      content: { parts: [{ text: clean }] }
     });
 
-    const values =
-      r?.embedding?.values ||
-      r?.data?.[0]?.embedding?.values ||
+    const v =
+      result?.embedding?.values ||
+      result?.data?.[0]?.embedding?.values ||
       [];
 
-    if (!values.length) return null;
+    if (!v.length) return null;
 
-    // تطبيع
-    const norm = Math.sqrt(values.reduce((s, v) => s + v * v, 0)) || 1;
-    return values.map((v) => v / norm);
-  } catch (err) {
-    console.warn("⚠️ embedText error:", err.message);
+    const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) || 1;
+    return v.map((x) => x / norm);
+  } catch {
     return null;
   }
 }
 
-export async function ensureKnowledgeEmbeddings(items) {
-  if (!items || !items.length) {
-    knowledgeEmbeddings = [];
-    return;
-  }
-  if (knowledgeEmbeddings && knowledgeEmbeddings.length === items.length) {
+async function ensureEmbeddings(items) {
+  if (knowledgeEmbeddings && knowledgeEmbeddings.length === items.length) return;
+
+  const model = await getEmbedModel();
+  if (!model) {
+    knowledgeEmbeddings = items.map(() => null);
     return;
   }
 
   console.log("🧠 Building embeddings for", items.length, "items...");
-  const EMBEDS = [];
 
-  for (let it of items) {
-    const combined =
-      (it.title || "") +
-      ". " +
-      (it.description || "") +
+  const emb = [];
+  for (const it of items) {
+    const txt =
+      it.title +
       " " +
-      (it.summary || "") +
+      it.description +
       " " +
-      (it.excerpt || "");
-    const emb = await embedText(combined);
-    EMBEDS.push(emb);
+      it.summary +
+      " " +
+      it.excerpt;
+
+    emb.push(await embed(txt));
   }
 
-  knowledgeEmbeddings = EMBEDS;
+  knowledgeEmbeddings = emb;
 }
 
-// ==========================
+// ---------------------------------------------
 // Keyword Routing
-// ==========================
-export function keywordRoute(question, items) {
-  const q = normalizeText(question);
+// ---------------------------------------------
+function keywordRoute(q, items) {
+  const lower = normalize(q);
 
-  const findByTitle = (keywords) =>
-    items.find((it) =>
-      keywords.some((k) => normalizeText(it.title).includes(normalizeText(k)))
+  // التعليق الصوتي
+  if (lower.includes("تعليق صوتي") || lower.includes("voice over")) {
+    return items.find((i) =>
+      normalize(i.title).includes("murf")
     );
-
-  if (q.includes("تعليق صوتي") || q.includes("voice over")) {
-    const t = findByTitle(["murf", "elevenlabs", "daryjat"]);
-    if (t) return { item: t, score: 0.98 };
   }
 
-  if (q.includes("copy ai") || q.includes("copy.ai") || q.includes("كوبي")) {
-    const t = findByTitle(["copy"]);
-    if (t) return { item: t, score: 0.97 };
+  // Copy.ai
+  if (lower.includes("copy ai") || lower.includes("copy.ai")) {
+    return items.find((i) => normalize(i.title).includes("copy"));
   }
 
-  if (q.includes("من نحن") || q.includes("about")) {
-    const t = findByTitle(["about", "نوفا"]);
-    if (t) return { item: t, score: 0.95 };
+  // من نحن
+  if (
+    lower.includes("من نحن") ||
+    lower.includes("نوفا لينك") ||
+    lower.includes("about us")
+  ) {
+    return items.find((i) => normalize(i.title).includes("novalink"));
   }
 
   return null;
 }
 
-// ==========================
-// Similarity Search
-// ==========================
-export async function findBestMatch(question, items) {
-  if (!question || !items || !items.length) {
-    return { score: 0, item: null };
+// ---------------------------------------------
+// Cosine Similarity
+// ---------------------------------------------
+function cosine(a, b) {
+  if (!a || !b || a.length !== b.length) return 0;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+}
+
+// ---------------------------------------------
+// البحث عن أفضل تطابق
+// ---------------------------------------------
+export async function findKnowledgeMatch(question = "") {
+  const items = await loadKnowledge();
+  if (!items.length) {
+    return { type: "none", item: null };
   }
 
   const routed = keywordRoute(question, items);
-  if (routed) return routed;
+  if (routed) {
+    return { type: "strong", item: routed };
+  }
 
-  await ensureKnowledgeEmbeddings(items);
-  const qEmb = await embedText(question);
-
+  await ensureEmbeddings(items);
   const qTokens = tokenize(question);
-  let best = { score: 0, item: null };
+  const qEmb = await embed(question);
 
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    const titleTokens = tokenize(it.title);
-    const contentTokens = new Set([
-      ...titleTokens,
-      ...tokenize(it.summary),
-      ...tokenize(it.description),
-    ]);
+  let best = null;
+  let score = 0;
+
+  for (let idx = 0; idx < items.length; idx++) {
+    const it = items[idx];
+
+    const txt =
+      it.title +
+      " " +
+      it.description +
+      " " +
+      it.excerpt +
+      " " +
+      it.summary;
+
+    const tTokens = tokenize(txt);
+    if (!tTokens.size) continue;
 
     let common = 0;
-    qTokens.forEach((t) => contentTokens.has(t) && common++);
+    qTokens.forEach((t) => {
+      if (tTokens.has(t)) common++;
+    });
 
     const lexical = common / Math.max(qTokens.size, 1);
 
     let semantic = 0;
-    if (qEmb && knowledgeEmbeddings[i]) {
-      semantic = cosineSimilarity(qEmb, knowledgeEmbeddings[i]);
+    if (qEmb && knowledgeEmbeddings[idx]) {
+      semantic = cosine(qEmb, knowledgeEmbeddings[idx]);
     }
 
-    const finalScore = 0.6 * semantic + 0.4 * lexical;
+    const final = 0.6 * semantic + 0.4 * lexical;
 
-    if (finalScore > best.score) {
-      best = { score: finalScore, item: it };
+    if (final > score) {
+      score = final;
+      best = it;
     }
   }
 
-  return best;
-}
+  if (!best) return { type: "none", item: null };
 
-// ==========================
-// Export Thresholds
-// ==========================
-export const thresholds = {
-  STRONG: STRONG_MATCH_THRESHOLD,
-  MEDIUM: MEDIUM_MATCH_THRESHOLD,
-};
+  if (score >= 0.65) return { type: "strong", item: best };
+  if (score >= 0.4) return { type: "medium", item: best };
+
+  return { type: "none", item: null };
+}
