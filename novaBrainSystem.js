@@ -821,6 +821,47 @@ function detectAISession(intentId, history = []) {
   );
 }
 
+async function findBestMatch(userText = "", knowledgeBase = []) {
+  if (!userText || !knowledgeBase.length) {
+    return { score: 0, item: null };
+  }
+
+  const query = normalizeText(stripHtml(userText));
+  const tokens = tokenize(query);
+
+  let bestScore = 0;
+  let bestItem = null;
+
+  for (const item of knowledgeBase) {
+    if (!item) continue;
+
+    const fields = [
+      item.title || "",
+      item.description || "",
+      item.summary || "",
+      item.excerpt || ""
+    ].join(" ");
+
+    const fieldTokens = tokenize(fields);
+
+    let overlap = 0;
+    for (const t of tokens) {
+      if (fieldTokens.has(t)) overlap += 1;
+    }
+
+    const maxPossible = tokens.size || 1;
+    const score = overlap / maxPossible;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestItem = item;
+    }
+  }
+
+  return { score: bestScore, item: bestItem };
+}
+
+
 export async function novaBrainSystem(request) {
   const userText = (request.message || "").trim();
   const originalIntentId = request.originalIntentId || request.intentId || "explore";
