@@ -1,4 +1,3 @@
-novaBrainSystem.js
 // ===========================================
 // novaBrainSystem.js – NovaBrainSystem PRO v3 (Flat Brain Stable)
 // دماغ نوفا بوت الهجين: (نوايا + معرفة + Embeddings + Gemini)
