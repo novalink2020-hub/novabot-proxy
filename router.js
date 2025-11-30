@@ -1,3 +1,4 @@
+console.log("🛣️ Router V5.1 loaded at", new Date().toISOString());
 // ===========================================================
 // router.js – NovaBot Smart Request Router v2.0
 // الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ + ذاكرة المفاهيم (CKM) + Topic Switch Layer (V5)
