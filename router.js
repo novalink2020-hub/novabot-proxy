@@ -1,6 +1,6 @@
 // ===========================================================
-// router.js – NovaBot Smart Request Router v1.1
-// الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ + ذاكرة المفاهيم (CKM)
+// router.js – NovaBot Smart Request Router v2.0
+// الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ + ذاكرة المفاهيم (CKM) + Topic Switch Layer (V5)
 // ===========================================================
 
 import { detectNovaIntent } from "./novaIntentDetector.js";
@@ -11,6 +11,7 @@ const sessionMemory = new Map();
 const MAX_HISTORY_ENTRIES = 6; // 3 تبادلات (مستخدم+بوت)
 const MAX_CONCEPTS = 10;
 const MEMORY_WINDOW = 3;
+const SOFT_SWITCH_CONCEPT_CLAMP = 5;
 
 // استخراج sessionId من الـ IP أو الـ x-forwarded-for
 function getSessionId(req) {
@@ -76,6 +77,35 @@ function resetConceptMemory(sessionId) {
   const session = getSession(sessionId);
   session.concepts = [];
   saveSession(sessionId, session);
+}
+
+function classifyTopicTransition(session, userMessage = "", analysis = {}, history = []) {
+  if (!session || (!session.history?.length && !(session.concepts || []).length)) {
+    return "same_topic";
+  }
+
+  const matchesConcept = messageMatchesConcepts(userMessage, session.concepts || []);
+  const pronounFollow = hasPronounFollow(userMessage || "") && (session.concepts || []).length > 0;
+
+  const lastUser = [...(history || [])]
+    .filter((m) => m && m.role === "user")
+    .slice(-1)[0];
+  const lastIntent = lastUser?.effectiveIntentId || lastUser?.intentId || null;
+
+  const aiBizScore = (analysis.aiScore || 0) + (analysis.bizScore || 0);
+
+  if (matchesConcept || pronounFollow) return "same_topic";
+  if (analysis.intentId === "out_of_scope" || aiBizScore === 0) return "hard_switch";
+
+  if (lastIntent && lastIntent !== "ai_business" && analysis.intentId === "ai_business") {
+    return "hard_switch"; // إعادة دخول إلى AI بعد خروج كامل
+  }
+
+  if (lastIntent && lastIntent === "ai_business" && analysis.intentId !== "ai_business") {
+    return "hard_switch";
+  }
+
+  return "soft_switch";
 }
 
 // ========================
@@ -149,9 +179,41 @@ function messageMatchesConcepts(text = "", concepts = []) {
 }
 
 function hasPronounFollow(text = "") {
-  const pronouns = ["هذا", "هذه", "هي", "هو", "كيف نبدأ", "كيف نطوره", "كيف نطورها", "طيب كيف", "كيف نبدأ؟", "كيف نبدأ ?", "how do we start", "how to start", "how do we improve it", "how to improve it", "how do we develop it"];
+  const pronouns = [
+    "هذا",
+    "هذه",
+    "هي",
+    "هو",
+    "كيف نبدأ",
+    "كيف نطوره",
+    "كيف نطورها",
+    "طيب كيف",
+    "كيف نبدأ؟",
+    "كيف نبدأ ?",
+    "how do we start",
+    "how to start",
+    "how do we improve it",
+    "how to improve it",
+    "how do we develop it"
+  ];
   const lower = text.toLowerCase();
   return pronouns.some((p) => lower.includes(p.toLowerCase()));
+}
+
+function isQuestionLike(text = "") {
+  const lower = text.toLowerCase().trim();
+  if (!lower) return false;
+
+  if (lower.endsWith("?") || lower.endsWith("؟")) return true;
+
+  const qAr = ["ما ", "ماذا", "كيف", "لماذا", "هل ", "اشرح", "فسّر", "عرف", "ايش", "شو", "ليش"];
+  const qEn = ["what", "why", "how", "when", "where", "explain", "define", "help", "can you", "could you"];
+
+  if (qAr.some((kw) => lower.startsWith(kw)) || qEn.some((kw) => lower.startsWith(kw))) {
+    return true;
+  }
+
+  return false;
 }
 
 // ===========================================================
@@ -161,41 +223,84 @@ export async function routeNovaRequest(req, userMessage) {
   const sessionId = getSessionId(req);
   const session = getSession(sessionId);
   const history = session.history || [];
+  const hasUserHistory = history.some((m) => m && m.role === "user");
 
   // 1) تحليل النية
   const analysis = await detectNovaIntent(userMessage);
   const originalIntentId = analysis.intentId;
 
+  const topicTransition = classifyTopicTransition(session, userMessage, analysis, history);
+
   // 2) قرار إجبار AI
-  const forceAI = shouldForceAI(userMessage, analysis, history);
+  const startForceAI =
+    !hasUserHistory &&
+    !new Set([
+      "out_of_scope",
+      "greeting",
+      "thanks_positive",
+      "negative_mood",
+      "subscribe_interest",
+      "collaboration",
+      "consulting_purchase",
+      "novalink_info",
+      "novabot_info"
+    ]).has(originalIntentId) &&
+    ((analysis.aiScore || 0) + (analysis.bizScore || 0) > 0 || isQuestionLike(userMessage || ""));
+
+  const forceAI = startForceAI || shouldForceAI(userMessage, analysis, history);
 
   // 3) تعديل نية الطلب لو تم إجبار AI
   let effectiveIntentId = analysis.intentId;
   let effectiveSuggestedCard = analysis.suggestedCard || null;
+  let allowGemini = true;
+
+  if (originalIntentId === "out_of_scope") {
+    allowGemini = false;
+  }
+
+  if (topicTransition === "hard_switch" && analysis.intentId !== "ai_business") {
+    allowGemini = false;
+  }
 
   if (forceAI) {
     effectiveIntentId = "ai_business";
     effectiveSuggestedCard = null;
   }
 
-  // 3.1) تعزيز الذاكرة السياقية (CKM)
-  let weightScore = (analysis.aiScore || 0) + (analysis.bizScore || 0);
+  // 3.1) تعزيز الذاكرة السياقية (CKM) + Topic Switch Layer
+  let workingAiScore = analysis.aiScore || 0;
+  let workingBizScore = analysis.bizScore || 0;
   let contextFollowing = false;
 
+  if (topicTransition === "same_topic") {
+    workingAiScore += 2;
+    contextFollowing = true;
+  } else if (topicTransition === "soft_switch") {
+    workingAiScore = Math.max(0, Math.round(workingAiScore * 0.7));
+    session.concepts = (session.concepts || []).slice(-SOFT_SWITCH_CONCEPT_CLAMP);
+    saveSession(sessionId, session);
+  } else if (topicTransition === "hard_switch") {
+    workingAiScore = effectiveIntentId === "ai_business" ? workingAiScore : 0;
+    session.concepts = [];
+    saveSession(sessionId, session);
+  }
+
   if (messageMatchesConcepts(userMessage || "", session.concepts || [])) {
-    weightScore += 3;
+    workingAiScore += 3;
     contextFollowing = true;
   }
 
   const pronounFollow =
     hasPronounFollow(userMessage || "") && (session.concepts || []).length > 0;
   if (pronounFollow) {
-    weightScore += 4;
+    workingAiScore += 4;
     effectiveIntentId = "ai_business";
     contextFollowing = true;
   }
 
-  if (forceAI) weightScore += 2;
+  if (forceAI) workingAiScore += 2;
+
+  const weightScore = workingAiScore + workingBizScore;
 
   // 3.2) تحديد مستوى الجلسة (sessionTier)
   let sessionTier = "non_ai";
@@ -217,7 +322,9 @@ export async function routeNovaRequest(req, userMessage) {
     sessionConcepts: session.concepts || [],
     sessionTier,
     contextFollowing,
-    weightScore
+    weightScore,
+    allowGemini,
+    topicTransition
   });
 
   // 5) حفظ في الذاكرة: مستخدم + بوت
@@ -262,7 +369,11 @@ export async function routeNovaRequest(req, userMessage) {
     "gemini:",
     brainReply.geminiUsed,
     "match:",
-    brainReply.matchType || "none"
+    brainReply.matchType || "none",
+    "topicTransition:",
+    topicTransition,
+    "allowGemini:",
+    allowGemini
   );
 
   // 7) إعادة الرد للـ server.js
