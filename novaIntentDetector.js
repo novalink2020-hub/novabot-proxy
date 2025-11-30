@@ -603,96 +603,142 @@ const HARD_OUT_OF_SCOPE_KEYWORDS = [
   "طبخ",
   "وصفة",
   "وصفات",
+  "اكل",
+  "أكل",
+  "مكرونة",
+  "مكرونه",
+  "معكرونة",
+  "معكرونه",
+  "سفرة",
+  "مطبخ",
+  "شيف",
+  "طباخ",
+  "طهي",
   "كيك",
-  "حلويات",
+  "معجنات",
 
   // طقس
   "طقس",
   "الطقس",
+  "حالة الطقس",
   "درجة الحرارة",
-  "درجات الحرارة",
-  "weather",
-  "جو اليوم",
-  "الجو اليوم",
+  "حرارة",
+  "تنبؤ",
+  "احوال الطقس",
+  "أحوال الطقس",
+  "برد",
+  "حر",
+  "ثلج",
+  "مطر",
   "امطار",
   "أمطار",
-  "ثلج",
+  "عاصفة",
+  "عواصف",
 
   // سيارات
   "سيارة",
   "سيارات",
-  "تويوتا",
-  "مرسيدس",
-  "bmw",
-  "بي ام",
-  "هوندا",
-  "كيا",
-  "هيونداي",
-  "تأمين سيارة",
+  "محرك",
+  "محركات",
+  "زيت محرك",
+  "كراج",
+  "كراجات",
+  "مكانيكي",
+  "ميكانيكي",
+  "موتور",
+  "جير",
+  "gear",
+  "سيارة كهربائية",
+  "tesla",
+  "تسلا",
 
-  // موضة / ملابس
+  // موضة / عطور
+  "عطر",
+  "عطور",
+  "برفيوم",
+  "بيرفيوم",
   "موضة",
-  "فساتين",
-  "فستان",
-  "احذية",
-  "أحذية",
-  "بنطلون",
-  "تيشيرت",
-  "قميص",
-  "لبس",
+  "فاشون",
+  "ازياء",
+  "أزياء",
   "ملابس",
-  "makeup",
-  "ميكب",
-  "مكياج",
+  "لبس",
+  "fashion",
+  "runway",
+  "شانيل",
+  "dior",
+  "لوبوتان",
+  "شنط",
+  "حقائب",
+
+  // سفر / سياحة
+  "سفر",
+  "سياحة",
+  "سياحه",
+  "رحلات",
+  "رحلة",
+  "تذاكر طيران",
+  "طيران",
+  "فيزا",
+  "هجرة",
+  "هجره",
+  "اقامة",
+  "إقامة",
+  "تأشيرة",
+  "تاشيرة",
+  "تأشيره",
+  "تاشيره",
+  "فندق",
+  "فنادق",
+  "حجز فندق",
+  "حجوزات",
 
   // رياضة
+  "كرة",
   "كرة قدم",
   "مباراة",
   "ماتش",
-  "ريال مدريد",
-  "برشلونة",
-  "ميسي",
-  "رونالدو",
-  "دوري",
+  "بطولة",
   "رياضة",
+  "رياضه",
+  "تمرين",
+  "جيم",
+  "كمال اجسام",
+  "كمال أجسام",
+  "bodybuilding",
 
-  // سفر
-  "سفر",
-  "رحلة",
-  "تذكرة طيران",
-  "flight",
-  "hotel",
-  "حجز فندق",
-  "فيزا",
-  "تأشيرة",
-
-  // صحة / طب
-  "دواء",
-  "دوائ",
-  "مرض",
-  "امراض",
-  "أمراض",
-  "طبيب",
-  "دكتور",
-  "علاج",
-  "تحاليل",
-
-  // أشياء عامة أخرى
-  "مدرسة",
-  "جامعة",
-  "امتحان",
-  "امتحانات",
-  "العاب",
-  "ألعاب",
-  "بلايستيشن",
-  "ps5",
+  // موسيقى / أفلام / ألعاب
+  "موسيقى",
+  "أغنية",
+  "اغنية",
+  "أغاني",
+  "اغاني",
+  "فيلم",
   "افلام",
   "أفلام",
+  "مسلسل",
   "مسلسلات",
-  "اغاني",
-  "أغاني",
-  "فيلم",
-  "مسلسل"
+  "بلايستيشن",
+  "ps5",
+  "ps4",
+  "اكس بوكس",
+  "xbox",
+  "نينتندو",
+  "لعبة",
+  "العاب",
+  "ألعاب",
+
+  // تعليم جامعي / امتحانات (خارج البزنس/AI)
+  "جامعة",
+  "جامعه",
+  "امتحان",
+  "امتحانات",
+  "مدرسة",
+  "مدرسه",
+  "طلاب",
+  "طالب",
+  "معلم",
+  "معلمة"
 ];
 
 /* ============== الدالة الرئيسية ============== */
@@ -706,7 +752,9 @@ export async function detectNovaIntent(userMessage = "") {
       language: "ar",
       dialectHint: "msa",
       toneHint: "neutral",
-      suggestedCard: null
+      suggestedCard: null,
+      aiScore: 0,
+      bizScore: 0
     };
   }
 
@@ -728,117 +776,123 @@ export async function detectNovaIntent(userMessage = "") {
   const novalinkScore = scoreByKeywords(clean, NOVALINK_INFO_KEYWORDS);
   const hardOutScope = scoreByKeywords(clean, HARD_OUT_OF_SCOPE_KEYWORDS);
 
+  const buildResult = (payload) => ({
+    ...payload,
+    aiScore,
+    bizScore
+  });
+
   // =========================
   // 2) كشف "خارج النطاق" بقوة
   //    أي موضوع طبخ/طقس/سيارات/موضة/طب... بدون بزنس
   // =========================
   if (hardOutScope > 0 && bizScore === 0) {
-    return {
+    return buildResult({
       intentId: "out_of_scope",
       confidence: 0.95,
       language,
       dialectHint,
       toneHint: "neutral",
       suggestedCard: null
-    };
+    });
   }
 
   // =========================
   // 3) نوايا تعريف نوفا لينك / نوفا بوت بحتة
   // =========================
   if (novalinkScore > 0 && aiScore === 0) {
-    return {
+    return buildResult({
       intentId: "novalink_info",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "neutral",
       suggestedCard: null
-    };
+    });
   }
 
   // =========================
   // 4) استشارة أو شراء خدمة
   // =========================
   if (consultScore > 0) {
-    return {
+    return buildResult({
       intentId: "consulting_purchase",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "neutral",
       suggestedCard: "bot_lead"
-    };
+    });
   }
 
   // =========================
   // 5) تعاون / شراكة
   // =========================
   if (collabScore > 0) {
-    return {
+    return buildResult({
       intentId: "collaboration",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "neutral",
       suggestedCard: "collaboration"
-    };
+    });
   }
 
   // =========================
   // 6) اشتراك / نشرة
   // =========================
   if (subscribeScore > 0) {
-    return {
+    return buildResult({
       intentId: "subscribe_interest",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "positive",
       suggestedCard: "subscribe"
-    };
+    });
   }
 
   // =========================
   // 7) شكر / إيجابية
   // =========================
   if (thanksScore > 0 && aiScore === 0) {
-    return {
+    return buildResult({
       intentId: "thanks_positive",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "positive",
       suggestedCard: "subscribe"
-    };
+    });
   }
 
   // =========================
   // 8) مزاج سلبي / دعم معنوي
   // =========================
   if (negativeScore > 0 && aiScore === 0) {
-    return {
+    return buildResult({
       intentId: "negative_mood",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "negative",
       suggestedCard: null
-    };
+    });
   }
 
   // =========================
   // 9) ترحيب خالص (بدون سياق آخر)
   // =========================
   if (greetScore > 0 && original.length <= 40 && aiScore === 0) {
-    return {
+    return buildResult({
       intentId: "greeting",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "positive",
       suggestedCard: null
-    };
+    });
   }
 
   // =========================
@@ -846,14 +900,14 @@ export async function detectNovaIntent(userMessage = "") {
   //      (مثلاً: ما هي نوفا لينك ولماذا أنشئت؟)
   // =========================
   if (novalinkScore > 0 && aiScore > 0) {
-    return {
+    return buildResult({
       intentId: "novalink_info",
       confidence: 0.9,
       language,
       dialectHint,
       toneHint: "neutral",
       suggestedCard: null
-    };
+    });
   }
 
   // =========================
@@ -872,26 +926,26 @@ export async function detectNovaIntent(userMessage = "") {
       suggestedCard = "business_subscribe";
     }
 
-    return {
+    return buildResult({
       intentId: "ai_business",
       confidence: conf,
       language,
       dialectHint,
       toneHint: "neutral",
       suggestedCard
-    };
+    });
   }
 
   // =========================
   // 12) إذا لا يوجد أي تطابق واضح
   //      → تعامل كـ خارج النطاق
   // =========================
-  return {
+  return buildResult({
     intentId: "out_of_scope",
     confidence: 0.6,
     language,
     dialectHint,
     toneHint: "neutral",
     suggestedCard: null
-  };
+  });
 }
