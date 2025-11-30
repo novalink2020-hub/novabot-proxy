@@ -1,3 +1,4 @@
+novaBrainSystem.js
 // ===========================================
 // novaBrainSystem.js – NovaBrainSystem PRO v3 (Flat Brain Stable)
 // دماغ نوفا بوت الهجين: (نوايا + معرفة + Embeddings + Gemini)
@@ -45,7 +46,7 @@ const NOVABOT_TEXT_PACKAGE = {
   welcomeFirst:
     "👋 أهلاً بك في نوفا لينك، مساحة صُمِّمت لترافقك في رحلتك مع الذكاء الاصطناعي خطوة بخطوة.<br>يمكنك أن تسأل، تستكشف، أو تبدأ من مقال يلهمك… القرار لك، وأنا هنا لأساعدك.",
   welcomeReturning:
-    "👋 سعيد برؤيتك مجددًا في نوفا لينك.<br>هل ترغب أن أساعدك اليوم في اكتشاف مقال جديد، أداة عملية، أو فكرة تلهمك للخطوة التالية؟",
+    "👋 سعيد بؤيتك مجددًا في نوفا لينك.<br>هل ترغب أن أساعدك اليوم في اكتشاف مقال جديد، أداة عملية، أو فكرة تلهمك للخطوة التالية؟",
   noMatch:
     "💬 يبدو أن سؤالك يفتح بابًا جديدًا لم نكتب عنه بعد في نوفا لينك،<br>لكننا نُرحّب دائمًا بالأفكار الجديدة التي تُلهمنا للكتابة عنها مستقبلًا.<br>شاركنا رؤيتك أو تصوّرك حوله، فربما يكون موضوع التدوينة القادمة ✨<br>🔗 <a href=\"https://novalink-ai.com/about-us-althkaa-alastnaay\" target=\"_blank\" class=\"nova-link\">تعرّف على أهداف نوفا لينك</a>",
   aboutNovaLink:
@@ -92,28 +93,153 @@ const ARABIC_STOPWORDS = new Set([
   "لقد",
   "كان",
   "كانت",
-  "يكون",
+  "يمكن",
+  "أصبح",
+  "ليس",
+  "ليسوا",
+  "أحد",
+  "أية",
+  "أي",
+  "أيضًا",
+  "أيضاً",
+  "أيضا",
+  "أنت",
+  "أنتِ",
+  "انا",
+  "أنا",
+  "أنتَ",
+  "أنتي",
+  "أنتيِ",
+  "أنتِ",
+  "انت",
+  "انتي",
+  "انتِ",
   "لدي",
+  "عندي",
   "لدينا",
-  "لكل",
+  "لديّ",
+  "عنديّ",
+  "بعض",
+  "كل",
+  "كلها",
+  "كلهم",
+  "له",
+  "لها",
+  "لهم",
+  "لهن",
+  "لنا",
+  "علينا",
+  "عنها",
+  "عنه",
+  "عنهما",
+  "عليها",
+  "عليه",
+  "عليهم",
+  "عليهن",
+  "عليكما",
+  "عليكم",
+  "عليكن",
+  "ذلك",
+  "تلك",
+  "هذا",
+  "هذه",
+  "هؤلاء",
+  "اولئك",
+  "أولئك",
+  "هنا",
+  "هناك",
   "أي",
   "اي",
-  "أية",
-  "اية",
-  "كيف",
+  "أو",
+  "او",
+  "إما",
+  "اما",
+  "إذا",
+  "اذا",
+  "لكن",
+  "لكنّ",
+  "لكنَّ",
+  "لأن",
+  "لان",
+  "لأنّ",
+  "لأنَّ",
+  "لانّ",
+  "لانَّ",
+  "حتى",
+  "لو",
+  "إن",
+  "ان",
+  "كلما",
+  "كلّما",
+  "كأن",
+  "كأنّ",
+  "كأنَّ",
+  "كي",
+  "لكي",
+  "فلن",
+  "لن",
+  "لما",
   "لماذا",
+  "لم",
+  "لا",
+  "ما",
+  "ماذا",
+  "منذ",
+  "أثناء",
+  "اثناء",
+  "اثناء",
+  "خلال",
+  "بينما",
+  "بين",
+  "قبل",
+  "بعد",
+  "حيث",
+  "حيثما",
   "متى",
   "أين",
   "اين",
-  "مازال",
-  "ما زال",
-  "ليست",
-  "ليس",
-  "لا",
-  "لم",
-  "لن",
-  "هل",
+  "أية",
+  "أحد",
+  "كل",
+  "كلما",
   "او",
+  "أو",
+  "مع",
+  "بسبب",
+  "منذ",
+  "فوق",
+  "تحت",
+  "أمام",
+  "خلف",
+  "وراء",
+  "داخل",
+  "خارج",
+  "أحيانًا",
+  "أحيانا",
+  "أحياناً",
+  "ليس",
+  "كانت",
+  "كان",
+  "ستكون",
+  "سيكون",
+  "هم",
+  "هن",
+  "هما",
+  "انت",
+  "نحن",
+  "انتم",
+  "انتن",
+  "أنا",
+  "انا",
+  "هو",
+  "هي",
+  "هم",
+  "هن",
+  "هذه",
+  "هذا",
+  "ذلك",
+  "تلك",
+  "إلى",
   "الى",
   "حتى",
   "بعد",
@@ -238,6 +364,32 @@ function tokenizeForConcepts(text = "") {
   return cleaned.split(" ").filter(Boolean);
 }
 
+function clampTokens(value = 0, min = 0, max = 200) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function safeHTML(str = "") {
+  return escapeHtml(str || "").replace(/\n/g, "<br>");
+}
+
+function buildPivotedAISnippet(aiRawText = "", language = "ar") {
+  const plain = stripHtml(aiRawText || "").trim();
+  const sentences = plain.split(/[.!؟?]/).map((s) => s.trim()).filter(Boolean);
+  const head = sentences.slice(0, 2).join(". ");
+
+  if (language === "en") {
+    return (
+      (head || "There are several general approaches.") +
+      " But since NovaBot’s core mission is AI and business, I can guide you toward tools and ideas that elevate your workflow and productivity."
+    );
+  }
+
+  return (
+    (head || "هناك عدة طرق عامة يمكن التفكير بها.") +
+    " وبما أن نوفا بوت وجد لمساعدتك في ربط الذكاء الاصطناعي بعملك ومهنتك، أستطيع أن أوجهك نحو أدوات وخطوات تعزز إنتاجيتك وتطور مشروعك."
+  );
+}
+
 function isMeaningfulToken(token = "") {
   if (!token || token.length < 2) return false;
   const lower = token.toLowerCase();
@@ -325,285 +477,108 @@ async function loadKnowledgeBase() {
       : [];
 
     knowledgeCache = cleaned;
-    knowledgeLoadedAt = Date.now();
-    knowledgeEmbeddings = null; // نعيد بناء الـ Embeddings عند أول طلب
+    knowledgeLoadedAt = now;
 
-    console.log("✅ Knowledge loaded from", knowledgeSourceURL, "items:", cleaned.length);
+    console.log("✅ Knowledge loaded:", cleaned.length, "items");
     return cleaned;
   } catch (err) {
-    console.error("❌ Failed to load knowledge JSON:", err);
-    knowledgeCache = [];
-    knowledgeLoadedAt = Date.now();
-    knowledgeEmbeddings = null;
+    console.error("⚠️ Failed to load knowledge:", err.message);
     return [];
   }
 }
 
-// دالة استدعاء من السيرفر لتحديث مصدر المعرفة
-export async function loadKnowledgeFromURL(url) {
-  if (url && typeof url === "string") {
-    knowledgeSourceURL = url.trim();
-  } else {
-    knowledgeSourceURL = DEFAULT_KNOWLEDGE_URL;
-  }
-  knowledgeCache = null;
-  knowledgeEmbeddings = null;
-  const kb = await loadKnowledgeBase();
-  return kb.length;
-}
+/* =============== Embeddings =============== */
 
-/* =============== Embeddings للمعرفة =============== */
+async function ensureEmbeddingModel() {
+  if (embedModel) return embedModel;
+  if (!genAI) return null;
 
-async function ensureEmbedModel() {
-  if (!genAI || !GEMINI_API_KEY) return null;
-  if (!embedModel) {
-    embedModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
-  }
-  return embedModel;
-}
-
-async function embedText(text = "") {
   try {
-    const model = await ensureEmbedModel();
-    if (!model) return null;
-
-    const clean = text.trim();
-    if (!clean) return null;
-
-    const result = await model.embedContent({
-      content: { parts: [{ text: clean }] }
-    });
-
-    const values =
-      result?.embedding?.values ||
-      result?.data?.[0]?.embedding?.values ||
-      [];
-
-    if (!values.length) return null;
-
-    const norm = Math.sqrt(values.reduce((s, v) => s + v * v, 0)) || 1;
-    return values.map((v) => v / norm);
+    // يفضل gemini-pro-embeddings لو متاح
+    embedModel = genAI.getGenerativeModel({ model: "text-embedding-004" });
+    return embedModel;
   } catch (err) {
-    console.warn("⚠️ embedText error:", err.message);
+    console.warn("⚠️ Embedding model init failed:", err.message);
+    embedModel = null;
     return null;
   }
 }
 
-async function ensureKnowledgeEmbeddings(items) {
-  if (!items || !items.length) {
-    knowledgeEmbeddings = [];
-    return;
-  }
-  if (knowledgeEmbeddings && knowledgeEmbeddings.length === items.length) {
-    return;
-  }
+async function embedText(text = "") {
+  if (!text || text.length < 2) return null;
 
-  console.log("🧠 Building knowledge embeddings for", items.length, "items...");
-  const embeddings = [];
-  for (const item of items) {
-    const baseText =
-      (item.title || "") +
-      ". " +
-      (item.description || "") +
-      " " +
-      (item.summary || "") +
-      " " +
-      (item.excerpt || "");
-    const emb = await embedText(baseText);
-    embeddings.push(emb);
+  const model = await ensureEmbeddingModel();
+  if (!model) return null;
+
+  try {
+    const res = await model.embedContent(text);
+    return res.embedding.values || null;
+  } catch (err) {
+    console.warn("⚠️ Embedding error:", err.message);
+    return null;
   }
-  knowledgeEmbeddings = embeddings;
 }
 
-/* =============== Keyword Routing =============== */
+function cosineSimilarity(vecA = [], vecB = []) {
+  if (!vecA.length || !vecB.length || vecA.length !== vecB.length) return 0;
 
-function keywordRoute(question = "", items = []) {
-  const q = normalizeText(question);
-  if (!q || !items.length) return null;
-
-  const lowerTitle = (t) => normalizeText(t || "");
-  const findByTitleIncludes = (needleList) =>
-    items.find((it) =>
-      needleList.some((n) => lowerTitle(it.title).includes(normalizeText(n)))
-    );
-
-  // Murf / ElevenLabs / Daryjat
-  if (
-    q.includes("التعليق الصوتي") ||
-    q.includes("تعليق صوتي") ||
-    q.includes("voice over")
-  ) {
-    const target =
-      findByTitleIncludes(["murf", "murf.ai", "daryjat", "elevenlabs"]) || null;
-    if (target) return { item: target, score: 0.98 };
-  }
-
-  // Copy.ai
-  if (
-    q.includes("copy.ai") ||
-    q.includes("copy ai") ||
-    q.includes("copyai") ||
-    q.includes("كوبي")
-  ) {
-    const target = findByTitleIncludes(["copy.ai", "copy ai", "copyai"]);
-    if (target) return { item: target, score: 0.97 };
-  }
-
-  // من نحن / نوفا لينك – لو فاتت النوايا
-  if (
-    q.includes("من نحن") ||
-    q.includes("من انتم") ||
-    q.includes("من أنتم") ||
-    q.includes("ما هي نوفا لينك") ||
-    q.includes("ما هي novalink")
-  ) {
-    const target = findByTitleIncludes(["من نحن", "about", "novalink"]);
-    if (target) return { item: target, score: 0.95 };
-  }
-
-  return null;
-}
-
-/* =============== حساب التطابق مع المعرفة =============== */
-
-function cosineSimilarity(vecA, vecB) {
-  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
   let dot = 0;
+  let normA = 0;
+  let normB = 0;
+
   for (let i = 0; i < vecA.length; i++) {
     dot += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
   }
-  return dot;
+
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-async function findBestMatch(question, items) {
-  if (!question || !items || !items.length) {
-    return { score: 0, item: null };
-  }
-
-  const qTokens = tokenize(question);
-  if (!qTokens.size) return { score: 0, item: null };
-
-  // Keyword routing أولًا
-  const routed = keywordRoute(question, items);
-  if (routed) {
-    console.log("🎯 Keyword route hit →", routed.item.url);
-    return routed;
-  }
-
-  await ensureKnowledgeEmbeddings(items);
-  const qEmbedding = await embedText(question);
-  const isShortQuery = qTokens.size <= 2;
-
-  let bestItem = null;
-  let bestScore = 0;
-
-  for (let idx = 0; idx < items.length; idx++) {
-    const item = items[idx];
-
-    const combined =
-      (item.title || "") +
-      " " +
-      (item.description || "") +
-      " " +
-      (item.excerpt || "") +
-      " " +
-      (item.summary || "");
-
-    const tTokens = tokenize(combined);
-    if (!tTokens.size) continue;
-
-    let common = 0;
-    qTokens.forEach((t) => {
-      if (tTokens.has(t)) common++;
-    });
-
-    const lexicalScore = common / Math.max(qTokens.size, isShortQuery ? 1 : 3);
-
-    const unionSize = qTokens.size + tTokens.size - common;
-    const jaccard = unionSize > 0 ? common / unionSize : 0;
-
-    const titleTokens = tokenize(item.title || "");
-    let titleCommon = 0;
-    qTokens.forEach((t) => {
-      if (titleTokens.has(t)) titleCommon++;
-    });
-    const titleScore =
-      titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
-
-    const keywordTokens = new Set(item.keywords || []);
-    let keywordCommon = 0;
-    qTokens.forEach((t) => {
-      if (keywordTokens.has(t)) keywordCommon++;
-    });
-
-    const keywordScore =
-      keywordCommon /
-      Math.max(qTokens.size, Math.min(keywordTokens.size || 1, 3));
-
-    let semantic = 0;
-    if (qEmbedding && knowledgeEmbeddings && knowledgeEmbeddings[idx]) {
-      semantic = cosineSimilarity(qEmbedding, knowledgeEmbeddings[idx]);
-    }
-
-    const weighted =
-      0.25 * lexicalScore +
-      0.25 * jaccard +
-      0.25 * titleScore +
-      0.15 * keywordScore +
-      0.1 * semantic;
-
-    if (weighted > bestScore) {
-      bestScore = weighted;
-      bestItem = item;
-    }
-  }
-
-  return { score: bestScore, item: bestItem };
-}
-
-/* =============== Intent helpers (بدون كشف نية داخلي) =============== */
+/* =============== بناء الردود المؤتمتة =============== */
 
 function buildStrongMatchReply(item) {
-  const safeTitle = escapeHtml(item.title || "");
-  const safeUrl = escapeAttr(item.url || "#");
+  const { title, url, summary } = item;
 
   return `
- السؤال الذي طرحته سبق أن تناولناه في نوفا لينك بعنوان:<br>
- “${safeTitle}”.<br><br>
- هذه التدوينة صُممت لتقدّم إجابة مركّزة يمكن تطبيقها في عملك مباشرة.<br>
- 🔗 <a href="${safeUrl}" target="_blank" class="nova-link">اقرأ المقال على نوفا لينك</a>`;
+  <div class="nova-strong-match">
+    <h3>🔍 هذا ما وجدته لك</h3>
+    <p>${escapeHtml(summary || "").substring(0, 400)}...</p>
+    <p><a class="nova-link" target="_blank" href="${escapeAttr(url)}">اقرأ التفاصيل: ${escapeHtml(
+    title
+  )}</a></p>
+  </div>
+  `;
 }
 
 function buildMidMatchTemplateReply(item) {
-  const safeTitle = escapeHtml(item.title || "");
-  const safeUrl = escapeAttr(item.url || "#");
+  const { title, url } = item;
 
   return `
- سؤالك قريب من فكرة ناقشناها في نوفا لينك بعنوان:<br>
- “${safeTitle}”.<br><br>
- قد لا تكون الإجابة طبق الأصل عمّا في ذهنك، لكنها ستفتح لك زاوية تفكير أوسع حول الموضوع.<br>
- 🔗 <a href="${safeUrl}" target="_blank" class="nova-link">اقرأ المقال</a>`;
-}
-
-function wrapAiAnswerWithLink(aiText, item) {
-  const safeUrl = escapeAttr(item.url || "#");
-  const safeAi = escapeHtml(aiText).replace(/\n/g, "<br>");
-
-  return `
- ${safeAi}<br><br>
- 🔗 <a href="${safeUrl}" target="_blank" class="nova-link">
-   تعمّق أكثر من خلال هذه التدوينة على نوفا لينك
- </a>`;
+  <div class="nova-mid-match">
+    <h3>🧭 فكرة يمكن البناء عليها</h3>
+    <p>هذا اقتراح مبدئي مرتبط بموضوع سؤالك، ويمكن تعميقه أكثر.</p>
+    <p><a class="nova-link" target="_blank" href="${escapeAttr(url)}">اقرأ المقال: ${escapeHtml(
+    title
+  )}</a></p>
+  </div>
+  `;
 }
 
 function buildAutomatedFallbackReply() {
-  return NOVABOT_TEXT_PACKAGE.noMatch;
+  return `
+  <div class="nova-fallback">
+    <h3>🤝 دعنا نقترب أكثر</h3>
+    <p>أخبرني ما هو العنصر الأهم في سؤالك: هل تبحث عن أداة، خطة، أو مثال تطبيقي؟</p>
+    <p>كلما زودتني بتفاصيل أكثر، كلما استطعت ربط الذكاء الاصطناعي بعملك بشكل أدق.</p>
+  </div>
+  `;
 }
 
-function buildGreetingReply(isReturning = false) {
-  return isReturning
-    ? NOVABOT_TEXT_PACKAGE.welcomeReturning
-    : NOVABOT_TEXT_PACKAGE.welcomeFirst;
+function buildGreetingReply(hasHistory = false) {
+  if (hasHistory) return NOVABOT_TEXT_PACKAGE.welcomeReturning;
+  return NOVABOT_TEXT_PACKAGE.welcomeFirst;
 }
 
 function buildThanksPositiveReply() {
@@ -615,21 +590,30 @@ function buildNegativeMoodReply() {
 }
 
 function buildSubscribeInterestReply() {
-  return `يسعدني حماسك للمتابعة ✉️<br>
- يمكنك استخدام بطاقة الاشتراك الظاهرة في الواجهة لإضافة بريدك، لتصلك خلاصة أفكار وأدوات نوفا لينك المرتبطة بالذكاء الاصطناعي وتطوير الأعمال.<br>
- كل رسالة ستكون أقرب إلى "خلاصة عملية" منها إلى نشرة تقليدية.`;
+  return `
+  <div class="nova-subscribe">
+    <p>📩 تريد أن نتابع معك خطوة بخطوة؟ اشترك في قائمة نوفا لينك البريدية لتحصل على ملخصات وأدوات عملية مرتبطة بسؤالك.</p>
+    <a class="nova-link" target="_blank" href="https://novalink-ai.com/ashtrk-alan">اشترك الآن</a>
+  </div>
+  `;
 }
 
 function buildCollaborationReply() {
-  return `نوفا لينك منفتحة على التعاونات المهنية الجادة المرتبطة بالذكاء الاصطناعي للأعمال وتطوير البوتات الذكية.<br><br>
- يمكن أن يكون التعاون على شكل رعاية محتوى، ورش عمل، ندوات مشتركة، أو مشاريع رقمية تخدم روّاد الأعمال.<br><br>
- استخدم بطاقة التعاون في الواجهة لترك تفاصيلك، وسنعود إليك بعد مراجعة الفكرة.`;
+  return `
+  <div class="nova-collab">
+    <p>🤝 هل تفكر في تعاون أو شراكة؟<br>يسعدنا الاستماع لفكرتك والعمل معًا على مشروع أو ورشة عمل أو إنتاج محتوى.</p>
+    <a class="nova-link" target="_blank" href="https://novalink-ai.com/contact">تواصل معنا</a>
+  </div>
+  `;
 }
 
 function buildConsultingPurchaseReply() {
-  return `طلب استشارة أو بوت مخصص لعملك خطوة عملية جدًا 💼<br><br>
- يمكننا مساعدتك في بناء بوت دردشة مخصص لعملك، أو رسم مسار عمل ذكي لاستخدام أدوات الذكاء الاصطناعي في مشروعك.<br>
- استخدم بطاقة "بوت دردشة لعملك" لحجز جلسة تعريفية سريعة، وتوضيح نوع النشاط والجمهور وأهدافك من البوت.`;
+  return `
+  <div class="nova-consult">
+    <p>🎯 استشارة مركّزة مع نوفا لينك يمكن أن تختصر عليك وقتًا طويلًا في بناء منتجك أو مشروعك المعتمد على الذكاء الاصطناعي.</p>
+    <a class="nova-link" target="_blank" href="https://novalink-ai.com/book-consultation">احجز استشارة</a>
+  </div>
+  `;
 }
 
 function buildNovaLinkInfoReply() {
@@ -637,202 +621,168 @@ function buildNovaLinkInfoReply() {
 }
 
 function buildNovaBotInfoReply() {
-  return `🤖 نوفا بوت هو مساعد دردشة ذكي من منصة نوفا لينك، أقرب إلى "مستشار عملي" منه إلى روبوت أسئلة وأجوبة.<br><br>
- يركّز نوفا بوت على:<br>
- - مساعدتك على فهم أدوات الذكاء الاصطناعي واختيار ما يناسب مشروعك.<br>
- - اقتراح خطوات عملية لرفع الإنتاجية وتبسيط عملك اليومي.<br>
- - توجيهك إلى أكثر الأفكار والمفاهيم ارتباطًا بسؤالك، بدل إغراقك بتفاصيل لا تحتاجها الآن.<br><br>
- كلما كان سؤالك أوضح ومرتبطًا بعملك، كانت إجابته أدق وأكثر فائدة.`;
+  return `
+  <div class="nova-bot-info">
+    <h3>🤖 من هو نوفا بوت؟</h3>
+    <p>نوفا بوت هو مساعد ذكي بُني بخبرة عملية في الذكاء الاصطناعي لتطوير الأعمال بالعربية والإنجليزية.</p>
+    <p>يركز على ربط الأفكار بالأدوات والخطوات العملية لتسريع مشروعك.</p>
+  </div>
+  `;
+}
+
+function buildDeveloperCardReplyAr() {
+  return `
+  <div class="nova-dev-card">
+    <h3>🛠️ بطاقة المطوّر</h3>
+    <p>الاسم: محمد أبو سنينة</p>
+    <p>الدور: مطوّر ومؤسس نوفا لينك</p>
+    <p>الرسالة: بناء أدوات ذكاء اصطناعي عربية عملية، تربطك بالنتائج لا بالضجة.</p>
+  </div>
+  `;
+}
+
+function buildDeveloperCardReplyEn() {
+  return `
+  <div class="nova-dev-card">
+    <h3>🛠️ Developer Card</h3>
+    <p>Name: Mohammed Abu Snaina</p>
+    <p>Role: Founder of Novalink AI & NovaBot</p>
+    <p>Mission: Build practical Arabic AI tools that drive results, not hype.</p>
+  </div>
+  `;
 }
 
 function buildGoodbyeReply() {
   return NOVABOT_TEXT_PACKAGE.goodbye;
 }
 
-function isGoodbyeMessage(text = "") {
-  const t = (text || "").toLowerCase();
-  const arabicBye = [
-    "مع السلامة",
-    "سلام",
-    "أراك لاحقًا",
-    "اشوفك",
-    "اشوفكم",
-    "الى اللقاء",
-    "إلى اللقاء",
-    "وداعا",
-    "وداعًا",
-    "خلص شكرا",
-    "يكفي شكرا"
-  ];
-  const englishBye = ["bye", "goodbye", "see you", "see ya", "see u", "thanks bye"];
+function wrapAiAnswerWithLink(aiText = "", item) {
+  const { title, url } = item || { title: "", url: "" };
 
-  return (
-    arabicBye.some((kw) => t.includes(kw)) ||
-    englishBye.some((kw) => t.includes(kw))
-  );
+  return `
+  <div class="nova-ai-reply">
+    <p>${safeHTML(aiText)}</p>
+    <p><a class="nova-link" target="_blank" href="${escapeAttr(url)}">🔗 مصدر موثوق: ${escapeHtml(
+    title
+  )}</a></p>
+  </div>
+  `;
 }
 
-/* =============== بطاقة المطوّر – الكود السري 10406621 =============== */
+/* =============== كشف النوايا السياقية =============== */
 
 function hasDeveloperCode(text = "") {
-  return (text || "").includes("10406621");
+  const lower = text.toLowerCase();
+  return lower.includes("novadev2024") || lower.includes("novabot-dev");
 }
 
-function buildDeveloperCardReplyAr() {
-  return `✨ لمحة سريعة عن الشخص الذي طوّر نوفا بوت ودرّبه…<br>
- 👨‍💻 “محمد أبو سنينة” — مطوّر عربي جمع خبرته بين القطاع المصرفي والذكاء الاصطناعي.<br>
- ينظر إلى الذكاء الاصطناعي كفرصة لإعادة تعريف أدوارنا في العمل، وليس كخطر يهددها، ويبني نوفا لينك كمساحة عملية تساعد روّاد الأعمال على استخدام الأدوات الذكية بثقة ووضوح.`;
+function isGoodbyeMessage(text = "") {
+  const lower = text.toLowerCase();
+  return lower.includes("bye") || lower.includes("مع السلامة") || lower.includes("وداعا");
 }
 
-function buildDeveloperCardReplyEn() {
-  return `👨‍💻 A quick snapshot of the person behind NovaBot and NovaLink:<br><br>
- - An Arabic creator who moved from the banking world into AI for business.<br>
- - Building NovaLink as a practical space to help entrepreneurs use AI tools step by step, not just read about them.<br>
- - Sees AI as a chance to redefine our role at work, not just a threat to it.<br><br>
- This card is for those who care about the human behind the system, not just the answers on the screen ✨`;
+/* =============== بحث في الذاكرة المفاهيمية =============== */
+
+function findConceptMatches(userText = "", concepts = []) {
+  if (!concepts || !concepts.length) return { matches: [], pronounFollow: false };
+
+  const lower = normalizeText(userText);
+  const tokens = tokenize(userText);
+
+  const pronounFollow = ["هذا", "هذه", "هي", "هو", "this", "it"].some((p) => lower.includes(p));
+
+  const matches = [];
+  for (const concept of concepts) {
+    if (!concept) continue;
+    if (tokens.has(concept.toLowerCase())) {
+      matches.push(concept);
+    }
+  }
+
+  return { matches, pronounFollow };
 }
 
-/* =============== استنتاج نوع الجلسة (AI Session) من التاريخ =============== */
+/* =============== المعرفة + Gemini =============== */
 
-function isSimpleClosing(text = "") {
-  const t = (text || "").toLowerCase().trim();
-  const simpleThanks = ["شكرا", "شكراً", "thanks", "thank you"];
-  const simpleBye = ["مع السلامة", "وداعا", "وداعًا", "bye", "goodbye"];
-  return simpleThanks.includes(t) || simpleBye.includes(t);
-}
+function formatPrompt(userText, item = null, { language, dialectHint, topicTransition }) {
+  if (language === "en") {
+    const sys = `
+You are NovaBot, an AI + business consultant. Language: English.
+- Answer briefly, practical, and with a growth mindset.
+- Avoid fluff. Provide actionable steps.
+- If user asks AI/business topics, use consultative tone.
+- Do NOT generate links unless provided.
+- Keep it concise unless asked otherwise.
+- dialectHint: ${dialectHint}. topicTransition: ${topicTransition}.`;
 
-function detectAISession(currentIntentId, sessionHistory = []) {
-  if (currentIntentId === "ai_business") return true;
-
-  const lastUserMsgs = (sessionHistory || [])
-    .filter((m) => m && m.role === "user")
-    .slice(-3);
-
-  return lastUserMsgs.some((m) => {
-    if (!m || !m.text) return false;
-    if (isSimpleClosing(m.text)) return false;
-    const historicalIntent = m.effectiveIntentId || m.intentId || "";
-    return historicalIntent === "ai_business" || m.hasAI === true;
-  });
-}
-
-/* =============== استدعاء Gemini =============== */
-
-function buildGeminiPrompt(
-  userText,
-  analysis,
-  bestItem,
-  isFollowup = false,
-  recentConcepts = []
-) {
-  const lang = analysis.language === "en" ? "en" : "ar";
-  const intentId = analysis.intentId || "explore";
-
-  let base = "";
-
-  base += `User question / سؤال المستخدم:\n"${userText}"\n\n`;
-
-  base += `Context / سياق:\n`;
-  base += `- intentId: ${intentId}\n`;
-  base += `- language: ${lang}\n`;
-  base += `- dialectHint: ${analysis.dialectHint || "msa"}\n`;
-  base += `- toneHint: ${analysis.toneHint || "neutral"}\n`;
-  if (analysis.topicTransition) {
-    base += `- topicTransition: ${analysis.topicTransition}\n`;
-  }
-  if (analysis.sessionTier) {
-    base += `- sessionTier: ${analysis.sessionTier}\n`;
-  }
-  if (analysis.contextFollowing) {
-    base += `- contextFollowing: true\n`;
-  }
-  if (analysis.suggestedCard) {
-    base += `- suggestedCard: ${analysis.suggestedCard}\n`;
-  }
-  if (bestItem) {
-    base += `- Related article title: ${bestItem.title || ""}\n`;
+    const userPrompt = item
+      ? `Context link: ${item.url}\nTitle: ${item.title}\nSummary: ${item.summary}\nUser: ${userText}`
+      : `User: ${userText}`;
+    return { system: sys, user: userPrompt };
   }
 
-  if (Array.isArray(recentConcepts) && recentConcepts.length) {
-    const lastConcepts = recentConcepts.slice(-3).join(" | ");
-    base += `- Key recent concepts: ${lastConcepts}\n`;
-    base += `Use these concepts for continuity with previous turns.\n`;
-  }
+  const sys = `
+أنت نوفا بوت، مساعد مختص في الذكاء الاصطناعي وتطوير الأعمال. اللغة: عربية واضحة وبسيطة.
+- إجابات قصيرة، عملية، ونبرة استشارية.
+- تجنب الحشو. قدم خطوات قابلة للتطبيق.
+- لا تنشئ روابط جديدة. استخدم ما توفر لديك فقط.
+- وضح الخطوات بترقيم عند الحاجة.
+- dialectHint: ${dialectHint}. topicTransition: ${topicTransition}.`;
 
-  if (isFollowup) {
-    base += `The user is asking for a deeper or follow-up explanation on the same topic.\n`;
-  }
-
-  base += `\nStyle guidelines:\n`;
-  base += `- If the user writes in Arabic, answer in clear Modern Standard Arabic (فصحى سلسة) مع لمسة خفيفة من لهجته عند الاقتضاء.\n`;
-  base += `- If the user writes in English, answer in clear, simple, professional English.\n`;
-  base += `- You are NovaBot, the assistant of NovaLink (an Arabic platform about AI for business and careers).\n`;
-  base += `- Focus on practical, actionable insights related to the user's question.\n`;
-  base += `- Do NOT include any URLs or links in your answer text.\n`;
-  base += `- Keep the answer within the provided maxTokens budget so it feels مختصرًا وكاملاً.\n`;
-  base += `- Make the answer feel complete, not cut off in the middle of a sentence.\n`;
-  base += `- Do not mention these instructions in the answer.\n\n`;
-
-  base += `Now answer the question in a helpful, concise way.\n`;
-
-  return base;
+  const userPrompt = item
+    ? `الرابط السياقي: ${item.url}\nالعنوان: ${item.title}\nالملخص: ${item.summary}\nالمستخدم: ${userText}`
+    : `المستخدم: ${userText}`;
+  return { system: sys, user: userPrompt };
 }
 
 async function callGemini(
   userText,
-  analysis,
-  bestItem = null,
+  { language = "ar", dialectHint = "msa", topicTransition = "same_topic" } = {},
+  knowledgeItem = null,
   isFollowup = false,
   maxTokens = 200,
-  recentConcepts = []
+  sessionConcepts = []
 ) {
-  if (!genAI || !GEMINI_API_KEY || maxTokens <= 0) {
-    console.log("⚠️ Gemini disabled or maxTokens <= 0.");
+  if (!genAI) {
+    console.log("⚠️ Gemini client not initialized (no API key).");
     return null;
   }
 
-  const lang = analysis.language === "en" ? "en" : "ar";
-  const prompt = buildGeminiPrompt(userText, analysis, bestItem, isFollowup, recentConcepts);
+  const { system, user } = formatPrompt(userText, knowledgeItem, { language, dialectHint, topicTransition });
 
-  const generationConfig = {
-    maxOutputTokens: maxTokens,
-    temperature: 0.6,
-    topP: 0.9
-  };
+  // إضافة تصور للمفاهيم السابقة عند وجودها
+  let conceptsHint = "";
+  if (Array.isArray(sessionConcepts) && sessionConcepts.length) {
+    conceptsHint = `\n\nPrevious concepts: ${sessionConcepts.slice(-5).join(", ")}`;
+  }
+
+  const prompt = [
+    system,
+    "----",
+    user,
+    conceptsHint,
+    isFollowup ? "\n\nUser indicates a follow-up; go deeper concisely." : ""
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   for (const modelName of MODELS_TO_TRY) {
     try {
-      console.log("🔁 Trying Gemini model:", modelName, "maxTokens:", maxTokens);
-
-      const systemInstruction =
-        lang === "en"
-          ? "You are NovaBot, the assistant of NovaLink, an Arabic platform focused on AI for business and careers. Answer in English with a clear, practical, and encouraging tone."
-          : "أنت نوفا بوت، مساعد منصة نوفا لينك المتخصص في الذكاء الاصطناعي وتطوير الأعمال والمهن. أجب بالعربية الفصحى السلسة، بأسلوب عملي مشجّع دون مبالغة، مع لمسات خفيفة من لهجة المستخدم عند الاقتضاء.";
-
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction
-      });
-
+      const model = genAI.getGenerativeModel({ model: modelName, safetySettings: [{ category: "HARM_CATEGORY_SEXUAL", threshold: "BLOCK_NONE" }] });
       const result = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: prompt }]
-          }
-        ],
-        generationConfig
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+          temperature: 0.4,
+          topK: 32,
+          topP: 0.95
+        }
       });
 
-      const raw =
-        result?.response?.text?.() ||
-        result?.response?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "";
+      const text = result.response?.text?.();
+      if (!text) continue;
 
-      let text = (raw || "").trim();
-      if (text.length <= 2) {
-        continue;
-      }
+      const lang = language || "ar";
 
       const tailAr = " وإذا احتجت توضيحًا أعمق في نقطة معيّنة، اطلب مني أن أتعمّق فيها أكثر.";
       const tailEn = " If you’d like a deeper explanation on a specific part, just ask me to go deeper on it.";
@@ -870,12 +820,16 @@ export async function novaBrainSystem(request) {
   const weightScore = request.weightScore || 0;
   const allowGemini = request.allowGemini !== false;
   const topicTransition = request.topicTransition || "same_topic";
+  const isFollowUp = request.isFollowUp === true;
+  const hasAIMomentum = request.hasAIMomentum === true;
 
   const sessionHistory = Array.isArray(request.recentMessages)
     ? request.recentMessages
     : Array.isArray(request.sessionHistory)
     ? request.sessionHistory
     : [];
+
+  const isFirstMessage = !request.recentMessages || request.recentMessages.length === 0;
 
   const isAIQuestion = effectiveIntentId === "ai_business";
   const isAISession = detectAISession(effectiveIntentId, sessionHistory);
@@ -923,10 +877,54 @@ export async function novaBrainSystem(request) {
 
   // 0.3) خارج النطاق دائمًا بدون AI
   if (originalIntentId === "out_of_scope") {
+    if (allowGemini && (isFirstMessage || hasAIMomentum || isFollowUp)) {
+      const microTokens = 80;
+      const aiText = await callGemini(
+        userText,
+        { ...request, sessionTier, contextFollowing: request.contextFollowing, topicTransition },
+        null,
+        true,
+        microTokens,
+        sessionConcepts
+      );
+
+      if (aiText) {
+        const steered = buildPivotedAISnippet(aiText, language);
+        return finalizeResponse(safeHTML(steered), {
+          usedAI: true,
+          geminiUsed: true,
+          matchType: "micro_ai_pivot",
+          maxTokens: microTokens
+        });
+      }
+    }
+
     return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
   }
 
   // 1) نوايا ثابتة (طالما لسنا مجبرين على AI)
+  if (isFirstMessage && effectiveIntentId !== "ai_business" && allowGemini) {
+    const microTokens = 80;
+    const aiText = await callGemini(
+      userText,
+      { ...request, sessionTier, contextFollowing: request.contextFollowing, topicTransition },
+      null,
+      true,
+      microTokens,
+      sessionConcepts
+    );
+
+    if (aiText) {
+      const steered = buildPivotedAISnippet(aiText, language);
+      return finalizeResponse(safeHTML(steered), {
+        usedAI: true,
+        geminiUsed: true,
+        matchType: "first_message_pivot",
+        maxTokens: microTokens
+      });
+    }
+  }
+
   if (!forceAI) {
     if (originalIntentId === "greeting") {
       return finalizeResponse(buildGreetingReply(sessionHistory.length > 0), { matchType: "fixed" });
@@ -1040,25 +1038,63 @@ export async function novaBrainSystem(request) {
 
   // جلسة غير AI + سؤال غير AI + بدون إجبار → من الردود التحفيزية
   if (!isAISession && !isAIQuestion && !forceAI) {
+    if ((hasAIMomentum || isFollowUp) && allowGemini) {
+      const microTokens = 80;
+      const aiText = await callGemini(
+        userText,
+        { ...request, sessionTier, contextFollowing: request.contextFollowing, topicTransition },
+        null,
+        true,
+        microTokens,
+        sessionConcepts
+      );
+
+      if (aiText) {
+        const steered = buildPivotedAISnippet(aiText, language);
+        return finalizeResponse(safeHTML(steered), {
+          usedAI: true,
+          geminiUsed: true,
+          matchType: "micro_ai_pivot",
+          maxTokens: microTokens
+        });
+      }
+    }
+
     return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
   }
 
   // كشف طلبات "أكمل / تابع / تعمق"
   const lower = userText.toLowerCase();
   const followupAr = [
-    "أكمل",
+    "وضح اكثر",
+    "فسر اكثر",
+    "اشرح اكثر",
+    "كمل",
     "تابع",
-    "وضّح أكثر",
-    "وضح أكثر",
-    "تفاصيل أكثر",
-    "تعمق فيها",
-    "تعمق فيها اكثر",
-    "اتعمق فيها اكثر"
+    "زيدني",
+    "احكي اكثر",
+    "حكي اكثر",
+    "طيب بعدين",
+    "طيب شو بعدين",
+    "طيب وبعدين",
+    "خلينا نكمل",
+    "نكمل"
   ];
-  const followupEn = ["continue", "more", "explain", "details", "go deeper"];
+  const followupEn = [
+    "continue",
+    "go on",
+    "tell me more",
+    "give me more",
+    "more details",
+    "more detail",
+    "explain more",
+    "explain further",
+    "go deeper"
+  ];
 
   const isFollowup =
-    followupAr.some((kw) => userText.includes(kw)) ||
+    isFollowUp ||
+    followupAr.some((kw) => lower.includes(kw)) ||
     followupEn.some((kw) => lower.includes(kw));
 
   // جدول maxTokens وفق السياسة + تكييف القوة
@@ -1067,6 +1103,13 @@ export async function novaBrainSystem(request) {
     baseTokens = 0;
   }
   let maxTokens = baseTokens;
+
+  if (isFollowup && hasAIMomentum) {
+    maxTokens = clampTokens(Math.max(maxTokens, 80), 60, 120);
+  } else if (!isAISession && hasAIMomentum) {
+    maxTokens = Math.max(maxTokens, 60);
+  }
+
   if (baseTokens > 0) {
     if (sessionTier === "strong_ai") {
       maxTokens = Math.min(200, baseTokens + 60);
@@ -1084,6 +1127,12 @@ export async function novaBrainSystem(request) {
     if (wordCount > 0 && wordCount <= 8) {
       maxTokens = Math.max(60, maxTokens - 40);
     }
+  }
+
+  if (isFollowup && hasAIMomentum) {
+    maxTokens = clampTokens(maxTokens, 60, 120);
+  } else if (!isAISession && hasAIMomentum) {
+    maxTokens = Math.max(maxTokens, 60);
   }
 
   const aiText =
