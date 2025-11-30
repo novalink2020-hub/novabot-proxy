@@ -1,3 +1,4 @@
+router.js
 // ===========================================================
 // router.js – NovaBot Smart Request Router v2.0
 // الطبقة التي تنسّق بين: النوايا → الجلسة → الدماغ + ذاكرة المفاهيم (CKM) + Topic Switch Layer (V5)
@@ -80,8 +81,18 @@ function resetConceptMemory(sessionId) {
   saveSession(sessionId, session);
 }
 
-function classifyTopicTransition(session, userMessage = "", analysis = {}, history = []) {
+function classifyTopicTransition(
+  session,
+  userMessage = "",
+  analysis = {},
+  history = [],
+  { isFollowUp = false, hasAIMomentum = false } = {}
+) {
   if (!session || (!session.history?.length && !(session.concepts || []).length)) {
+    return "same_topic";
+  }
+
+  if (isFollowUp && hasAIMomentum) {
     return "same_topic";
   }
 
@@ -112,7 +123,7 @@ function classifyTopicTransition(session, userMessage = "", analysis = {}, histo
 // ========================
 // منطق إجبار AI
 // ========================
-function shouldForceAI(userMessage, analysis, history) {
+function shouldForceAI(userMessage, analysis, history, { isFollowUp = false, hasAIMomentum = false } = {}) {
   const text = (userMessage || "").toLowerCase().trim();
 
   // لا نقوم بالإجبار في النوايا الثابتة أو خارج النطاق
@@ -170,6 +181,8 @@ function shouldForceAI(userMessage, analysis, history) {
     const endings = ["شكرا", "شكراً", "thanks", "thank you", "bye"];
     if (!endings.includes(text)) return true;
   }
+
+  if (isFollowUp && hasAIMomentum) return true;
 
   return false;
 }
@@ -230,7 +243,20 @@ export async function routeNovaRequest(req, userMessage) {
   const analysis = await detectNovaIntent(userMessage);
   const originalIntentId = analysis.intentId;
 
-  const topicTransition = classifyTopicTransition(session, userMessage, analysis, history);
+  const isFollowUp =
+    (analysis.followupScore || 0) > 0 || hasPronounFollow(userMessage || "");
+
+  const lastTurns = [...history].slice(-MEMORY_WINDOW);
+  const hasAIMomentum = lastTurns.some(
+    (m) =>
+      m &&
+      (m.hasAI === true || m.intentId === "ai_business" || m.effectiveIntentId === "ai_business")
+  );
+
+  const topicTransition = classifyTopicTransition(session, userMessage, analysis, history, {
+    isFollowUp,
+    hasAIMomentum
+  });
 
   // 2) قرار إجبار AI
   const startForceAI =
@@ -248,14 +274,15 @@ export async function routeNovaRequest(req, userMessage) {
     ]).has(originalIntentId) &&
     ((analysis.aiScore || 0) + (analysis.bizScore || 0) > 0 || isQuestionLike(userMessage || ""));
 
-  const forceAI = startForceAI || shouldForceAI(userMessage, analysis, history);
+  const forceAI =
+    startForceAI || shouldForceAI(userMessage, analysis, history, { isFollowUp, hasAIMomentum });
 
   // 3) تعديل نية الطلب لو تم إجبار AI
   let effectiveIntentId = analysis.intentId;
   let effectiveSuggestedCard = analysis.suggestedCard || null;
   let allowGemini = true;
 
-  if (originalIntentId === "out_of_scope") {
+  if (originalIntentId === "out_of_scope" && !hasAIMomentum && !isFollowUp) {
     allowGemini = false;
   }
 
@@ -301,6 +328,9 @@ export async function routeNovaRequest(req, userMessage) {
 
   if (forceAI) workingAiScore += 2;
 
+  if (hasAIMomentum) workingAiScore += 2;
+  if (isFollowUp && hasAIMomentum) workingAiScore += 3;
+
   const weightScore = workingAiScore + workingBizScore;
 
   // 3.2) تحديد مستوى الجلسة (sessionTier)
@@ -308,6 +338,10 @@ export async function routeNovaRequest(req, userMessage) {
   if (weightScore >= 7 || (contextFollowing && effectiveIntentId === "ai_business")) {
     sessionTier = "strong_ai";
   } else if (weightScore >= 4) {
+    sessionTier = "semi_ai";
+  }
+
+  if (hasAIMomentum && sessionTier === "non_ai") {
     sessionTier = "semi_ai";
   }
 
@@ -325,7 +359,9 @@ export async function routeNovaRequest(req, userMessage) {
     contextFollowing,
     weightScore,
     allowGemini,
-    topicTransition
+    topicTransition,
+    isFollowUp,
+    hasAIMomentum
   });
 
   // 5) حفظ في الذاكرة: مستخدم + بوت
