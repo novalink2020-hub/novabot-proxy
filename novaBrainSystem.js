@@ -790,7 +790,8 @@ const model = genAI.getGenerativeModel({
 });
 
 
-      const text = result.response?.text?.();
+const result = await model.generateContent(prompt);
+let text = await result.response.text();
       if (!text) continue;
 
       const lang = language || "ar";
