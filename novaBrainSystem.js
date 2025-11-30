@@ -767,16 +767,28 @@ async function callGemini(
 
   for (const modelName of MODELS_TO_TRY) {
     try {
-      const model = genAI.getGenerativeModel({ model: modelName, safetySettings: [{ category: "HARM_CATEGORY_SEXUAL", threshold: "BLOCK_NONE" }] });
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: {
-          maxOutputTokens: maxTokens,
-          temperature: 0.4,
-          topK: 32,
-          topP: 0.95
-        }
-      });
+const model = genAI.getGenerativeModel({
+  model: modelName,
+  safetySettings: [
+    {
+      category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      threshold: "HARM_BLOCK_NONE"
+    },
+    {
+      category: "HARM_CATEGORY_HATE_SPEECH",
+      threshold: "HARM_BLOCK_NONE"
+    },
+    {
+      category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+      threshold: "HARM_BLOCK_NONE"
+    },
+    {
+      category: "HARM_CATEGORY_HARASSMENT",
+      threshold: "HARM_BLOCK_NONE"
+    }
+  ]
+});
+
 
       const text = result.response?.text?.();
       if (!text) continue;
