@@ -1,3 +1,4 @@
+console.log("🧠 NovaBrainSystem V5.1 loaded at", new Date().toISOString());
 // ===========================================
 // novaBrainSystem.js – NovaBrainSystem PRO v3 (Flat Brain Stable)
 // دماغ نوفا بوت الهجين: (نوايا + معرفة + Embeddings + Gemini)
