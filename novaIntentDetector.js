@@ -19,7 +19,7 @@ const ARABIC_RANGE_RE = /[\u0600-\u06FF]/;
 function normalize(str = "") {
   return str
     .toLowerCase()
-    .replace(/[.,!?؟،"“”()\-_:;«»[\]{}/\\]+/g, " ")
+    .replace(/[.,!?؟،"“”()\-_:\;«»[\]{}/\\]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
