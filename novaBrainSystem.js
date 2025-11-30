@@ -806,6 +806,21 @@ async function callGemini(
 
 /* =============== المساعد الأساسي =============== */
 
+function detectAISession(intentId, history = []) {
+  if (intentId === "ai_business") return true;
+
+  // البحث في آخر 3 رسائل فقط
+  const last = Array.isArray(history) ? history.slice(-3) : [];
+
+  return last.some(
+    (m) =>
+      m &&
+      (m.intentId === "ai_business" ||
+        m.effectiveIntentId === "ai_business" ||
+        m.hasAI === true)
+  );
+}
+
 export async function novaBrainSystem(request) {
   const userText = (request.message || "").trim();
   const originalIntentId = request.originalIntentId || request.intentId || "explore";
