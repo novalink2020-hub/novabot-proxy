@@ -1,4 +1,3 @@
-===== novaIntentDetector.js =====
 const ARABIC_REGEX = /[\u0600-\u06FF]/;
 
 const DIALECT_KEYWORDS = {
