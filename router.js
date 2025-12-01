@@ -1,4 +1,3 @@
-===== router.js =====
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
