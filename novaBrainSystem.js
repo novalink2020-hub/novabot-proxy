@@ -1,4 +1,3 @@
-===== novaBrainSystem.js =====
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || "";
