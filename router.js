@@ -2,32 +2,42 @@ import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
 function normalizeMessage(httpRequest) {
-  const raw = httpRequest?.body?.message;
-  if (raw === undefined || raw === null) return "";
-  return String(raw).trim();
+  try {
+    const raw = httpRequest?.body?.message;
+    if (raw === undefined || raw === null) return "";
+    const text = String(raw).trim();
+    return typeof text === "string" ? text : "";
+  } catch (_) {
+    return "";
+  }
 }
 
 function normalizeHistory(httpRequest) {
-  const history = Array.isArray(httpRequest?.body?.history) ? httpRequest.body.history : [];
+  const history = Array.isArray(httpRequest?.body?.history)
+    ? httpRequest.body.history
+    : [];
+
   const sanitized = [];
+
   for (const entry of history) {
     if (!entry || typeof entry !== "object") continue;
     if (entry.role !== "user" && entry.role !== "assistant") continue;
     if (typeof entry.content !== "string") continue;
     sanitized.push({ role: entry.role, content: entry.content });
   }
-  if (sanitized.length > 8) {
-    return sanitized.slice(-8);
-  }
-  return sanitized;
+
+  return sanitized.length > 8 ? sanitized.slice(-8) : sanitized;
 }
 
 function deriveLanguageHint(httpRequest) {
-  const headerValue = httpRequest?.headers?.["accept-language"];
-  const primary = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof primary === "string" && primary.toLowerCase().startsWith("ar")) {
-    return "ar";
-  }
+  try {
+    const headerValue = httpRequest?.headers?.["accept-language"];
+    const primary = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+    if (typeof primary === "string" && primary.toLowerCase().startsWith("ar")) {
+      return "ar";
+    }
+  } catch (_) {}
+
   return "en";
 }
 
@@ -59,7 +69,8 @@ function safeEmptyResponse() {
 function brainFailureResponse() {
   return {
     ok: false,
-    reply: "NovaBot encountered an unexpected issue. Please try again in a moment, or explore NovaLink articles directly.",
+    reply:
+      "NovaBot encountered an unexpected issue. Please try again in a moment, or explore NovaLink articles directly.",
     actionCard: null,
     matchType: null,
     usedAI: false,
@@ -76,25 +87,35 @@ function normalizeOutput(brainResponse) {
     actionCard: brainResponse.actionCard || null,
     matchType: brainResponse.matchType || null,
     usedAI: !!brainResponse.usedAI,
-    maxTokens: typeof brainResponse.maxTokens === "number" ? brainResponse.maxTokens : null,
+    maxTokens:
+      typeof brainResponse.maxTokens === "number"
+        ? brainResponse.maxTokens
+        : null,
     mode: brainResponse.mode || null,
-    extractedConcepts: Array.isArray(brainResponse.extractedConcepts) ? brainResponse.extractedConcepts : []
+    extractedConcepts: Array.isArray(brainResponse.extractedConcepts)
+      ? brainResponse.extractedConcepts
+      : []
   };
 }
 
 export async function routeNovaBotRequest(httpRequest) {
-  const message = normalizeMessage(httpRequest);
-  if (!message) {
+  let message = normalizeMessage(httpRequest);
+
+  // Stronger empty message protection
+  if (typeof message !== "string" || message.length === 0) {
     return safeEmptyResponse();
   }
+
   const sessionHistory = normalizeHistory(httpRequest);
   const languageHint = deriveLanguageHint(httpRequest);
+
   let intentData;
   try {
     intentData = detectNovaIntent({ message, languageHint });
-  } catch (err) {
+  } catch (_) {
     intentData = defaultIntentData();
   }
+
   const brainRequest = {
     message,
     originalIntentId: intentData.originalIntentId,
@@ -110,12 +131,14 @@ export async function routeNovaBotRequest(httpRequest) {
     ip: httpRequest?.ip || null,
     userAgent: httpRequest?.headers?.["user-agent"] || null
   };
+
   let brainResponse;
   try {
     brainResponse = await novaBrainSystem(brainRequest);
-  } catch (err) {
+  } catch (_) {
     return brainFailureResponse();
   }
+
   return normalizeOutput(brainResponse);
 }
 
