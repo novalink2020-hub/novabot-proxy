@@ -1,6 +1,10 @@
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
+/* ============================================================
+   Helpers
+============================================================ */
+
 function normalizeMessage(httpRequest) {
   try {
     const raw = httpRequest?.body?.message;
@@ -98,10 +102,13 @@ function normalizeOutput(brainResponse) {
   };
 }
 
+/* ============================================================
+   ROUTER — CENTRAL REQUEST PROCESSOR
+============================================================ */
+
 export async function routeNovaBotRequest(httpRequest) {
   let message = normalizeMessage(httpRequest);
 
-  // Stronger empty message protection
   if (typeof message !== "string" || message.length === 0) {
     return safeEmptyResponse();
   }
@@ -115,6 +122,24 @@ export async function routeNovaBotRequest(httpRequest) {
   } catch (_) {
     intentData = defaultIntentData();
   }
+
+  /* ============================================================
+       🚀 FIRST-MESSAGE AI BOOST (Layer 1)
+       إذا كانت أول رسالة حقيقية من المستخدم → نستخدم AI مباشرة
+     ============================================================ */
+
+  const userMessagesCount = sessionHistory.filter(
+    (m) => m.role === "user"
+  ).length;
+
+  let forceAI = false;
+  if (userMessagesCount === 1) {
+    forceAI = true;
+  }
+
+  /* ============================================================
+       Construct Brain Request
+  ============================================================ */
 
   const brainRequest = {
     message,
@@ -132,6 +157,29 @@ export async function routeNovaBotRequest(httpRequest) {
     userAgent: httpRequest?.headers?.["user-agent"] || null
   };
 
+  /* ============================================================
+       🚀 Override to AI if First-Message Boost Active
+  ============================================================ */
+  if (forceAI) {
+    try {
+      const aiResponse = await novaBrainSystem({
+        ...brainRequest,
+        mode: "first_message_boost",
+        sessionTier: "strong_ai",
+        hasAIMomentum: true,
+        allowGemini: true,
+        maxTokens: 1200
+      });
+
+      return normalizeOutput(aiResponse);
+    } catch (_) {
+      return brainFailureResponse();
+    }
+  }
+
+  /* ============================================================
+       Normal Brain Processing
+  ============================================================ */
   let brainResponse;
   try {
     brainResponse = await novaBrainSystem(brainRequest);
