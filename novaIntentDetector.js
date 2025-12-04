@@ -1,138 +1,885 @@
-function normalizeMessage(raw) {
-  const text = (raw ?? "").toString();
-  return text.trim();
+novaIntentDetector.js
+// ===========================================
+// novaIntentDetector.js
+// كشف نوايا نوفا بوت (ذكاء اصطناعي + تطوير أعمال + نوايا تعريفية)
+// By Mohammed Abu Snaina – NOVALINK.AI
+// ===========================================
+
+/**
+ * ملاحظات تصميم:
+ * - فقط intent: "ai_business" يستدعي Gemini من novaBrainSystem.
+ * - باقي النوايا تستخدم ردود ثابتة مؤتمتة (صفر تكلفة توكنز).
+ * - أي موضوع خارج الذكاء الاصطناعي وتطوير الأعمال → out_of_scope → رد تحفيزي.
+ * - دعم لهجات: شامية، مصرية، خليجية، مغاربية على مستوى التحليل فقط.
+ */
+console.log("🎯 IntentDetector V5.1 loaded at", new Date().toISOString());
+const ARABIC_RANGE_RE = /[\u0600-\u06FF]/;
+
+/* ================= أدوات مساعدة للنص ================= */
+
+function normalize(str = "") {
+  return str
+    .toLowerCase()
+    .replace(/[.,!?؟،"“”()\-_:\;«»[\]{}/\\]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
-function countArabicChars(text) {
-  const matches = text.match(/[\u0600-\u06FF]/g);
-  return matches ? matches.length : 0;
-}
-function countLatinChars(text) {
-  const matches = text.match(/[A-Za-z]/g);
-  return matches ? matches.length : 0;
-}
-function detectLanguage(message, languageHint) {
-  const arabicCount = countArabicChars(message);
-  const latinCount = countLatinChars(message);
-  if (arabicCount > latinCount) return "ar";
-  if (latinCount > arabicCount) return "en";
-  if (Math.abs(arabicCount - latinCount) <= 1 && (languageHint === "ar" || languageHint === "en")) return languageHint;
-  return arabicCount > 0 ? "ar" : "en";
-}
-function detectDialect(message) {
-  const keywords = {
-    egyptian: ["ازاي","إزاي","دلوقتي","اوي","قوي","كده","جامد","ليه","عاوز"],
-    gulf: ["شلون","وش","واجد","زين","حيل","معليش","ياخي","وشو"],
-    levant: ["شو","هيك","كتير","هلق","هلأ","لسا","لسّه","تمام","مو","خلص"],
-    maghreb: ["برشا","بزاف","توا","ياسر","بالزاف","هكة","هك","mazal"]
-  };
-  const text = message.toLowerCase();
-  let best = "neutral";
-  let bestScore = 0;
-  for (const key of Object.keys(keywords)) {
-    let score = 0;
-    for (const kw of keywords[key]) {
-      const needle = kw.toLowerCase();
-      let index = text.indexOf(needle);
-      while (index !== -1) {
-        score += 1;
-        index = text.indexOf(needle, index + needle.length);
-      }
-    }
-    if (score > bestScore) {
-      bestScore = score;
-      best = key;
-    }
+
+function containsAny(text, list) {
+  if (!text) return false;
+  for (const kw of list) {
+    if (!kw) continue;
+    if (text.includes(kw)) return true;
   }
-  return bestScore === 0 ? "neutral" : best;
+  return false;
 }
-function scoreKeywords(message) {
-  const aiKeywords = ["ذكاء اصطناعي","الذكاء الاصطناعي","ذكاء","ai","gpt","شات جي بي تي","chatgpt","gemini","llm","نموذج لغوي","prompt","برومبت","أتمتة","automation","روبوت","bot","شات بوت"];
-  const businessKeywords = ["عمل","أعمال","مشروع","بيزنس","ريادة","ريادة أعمال","freelance","فريلانسر","تسويق","marketing","محتوى","content","startup","ستارت أب","side hustle","إنتاجية","productivity","تنظيم","system","workflow","مهام","وظيفة","وظائف","career","job"];
-  const text = message.toLowerCase();
-  let aiScore = 0;
-  let bizScore = 0;
-  for (const kw of aiKeywords) {
-    const needle = kw.toLowerCase();
-    let index = text.indexOf(needle);
-    while (index !== -1) {
-      aiScore += 1;
-      index = text.indexOf(needle, index + needle.length);
+
+function scoreByKeywords(text, list) {
+  if (!text) return 0;
+  let score = 0;
+  for (const kw of list) {
+    if (!kw) continue;
+    if (text.includes(kw)) score += 1;
+  }
+  return score;
+}
+
+/* ============== كشف اللغة واللهجة ============== */
+
+function detectLanguage(originalText = "") {
+  if (!originalText) return "ar";
+  return ARABIC_RANGE_RE.test(originalText) ? "ar" : "en";
+}
+
+function detectDialect(cleanText = "") {
+  // شامية
+  const levantWords = [
+    "شو",
+    "ليش",
+    "لهيك",
+    "هيك",
+    "لسا",
+    "لسه",
+    "هسا",
+    "سلامات",
+    "تمام عليك",
+    "بدي",
+    "بدك",
+    "كتير",
+    "عنجد",
+    "مو هيك",
+    "مو كثير",
+    "لساتني",
+    "لساتك"
+  ];
+
+  // خليجية
+  const gulfWords = [
+    "وايد",
+    "واجد",
+    "زود",
+    "مره",
+    "مرة حلو",
+    "حيل",
+    "شلون",
+    "شو رايك",
+    "يا رجال",
+    "توه",
+    "توني",
+    "سوي",
+    "سويت",
+    "دوم",
+    "مقهور"
+  ];
+
+  // مصرية
+  const egyptWords = [
+    "ازاي",
+    "ازاى",
+    "ليه",
+    "فين",
+    "كويس",
+    "تمام اوي",
+    "اوي",
+    "خالص",
+    "لسه",
+    "دلوقتي",
+    "دلوقتى",
+    "عايز",
+    "عاوزه",
+    "عايزة",
+    "جامد",
+    "بجد",
+    "تحفه",
+    "تحفة"
+  ];
+
+  // مغاربية
+  const maghrebWords = [
+    "بزاف",
+    "بزّاف",
+    "واش",
+    "شنو",
+    "شحال",
+    "باغي",
+    "بغيت",
+    "دابا",
+    "هكا",
+    "هكاك",
+    "برشا"
+  ];
+
+  if (containsAny(cleanText, levantWords)) return "levant";
+  if (containsAny(cleanText, gulfWords)) return "gulf";
+  if (containsAny(cleanText, egyptWords)) return "egypt";
+  if (containsAny(cleanText, maghrebWords)) return "maghreb";
+
+  return "msa"; // فصحى / عام عربي عام
+}
+
+/* ============== مجموعات الكلمات المفتاحية للنوايا ============== */
+
+/**
+ * 1) نية الذكاء الاصطناعي وتطوير الأعمال
+ *    (هي النية الوحيدة التي تستدعي Gemini)
+ */
+const AI_BUSINESS_KEYWORDS = [
+  // عربي عام عن الذكاء الاصطناعي
+  "ذكاء اصطناعي",
+  "الذكاء الاصطناعي",
+  "ذكاء إصطناعي",
+  "ذكاء صناعي",
+  "ذكاء صنعي",
+  "تعلم آلي",
+  "تعلم آلى",
+  "تعلم عميق",
+  "نموذج لغوي",
+  "نماذج لغوية",
+  "نموذج لغة",
+  "برومبت",
+  "برومبتات",
+  "اوتوماتيشن",
+  "أتمتة",
+  "أتمتة",
+  "اتمتة",
+  "تشات بوت",
+  "شات بوت",
+  "روبوت دردشة",
+  "مساعد ذكي",
+  "وكيل ذكي",
+  "عميل ذكي",
+
+  // أدوات / منصات ذكاء اصطناعي
+  "شات جي بي تي",
+  "chatgpt",
+  "chat gpt",
+  "chat-gpt",
+  "gpt",
+  "جي بي تي",
+  "جيبت",
+  "gemini",
+  "جيميني",
+  "bard",
+  "openai",
+  "أوبن إيه آي",
+  "novabot",
+  "نوفا بوت",
+  "nova bot",
+  "نوفا لينك",
+  "novalink",
+  "novalink ai",
+
+  // محتوى وتسويق
+  "توليد المحتوى",
+  "توليد نصوص",
+  "كتابة محتوى",
+  "كتابة اعلانية",
+  "كتابة إعلانية",
+  "كتابة مقالات",
+  "محتوى سوشيال",
+  "سوشيال ميديا",
+  "محتوى ترويجي",
+  "تحسين محركات البحث",
+  "سيو",
+  "seo",
+  "ماركتنج",
+  "marketing",
+  "content",
+  "copywriting",
+  "copy writer",
+  "حملات اعلانية",
+  "حملات إعلانية",
+  "اعلانات ممولة",
+  "إعلانات ممولة",
+  "إعلانات فيسبوك",
+  "اعلانات فيسبوك",
+  "فيسبوك ادز",
+  "facebook ads",
+  "instagram ads",
+  "انستغرام ادز",
+
+  // تعليق صوتي و TTS ضمن نفس النية
+  "تعليق صوتي",
+  "voice over",
+  "voice-over",
+  "tts",
+  "text to speech",
+  "نص الى كلام",
+  "نص إلى كلام",
+  "تحويل النص إلى صوت",
+  "صوت بالذكاء الاصطناعي",
+  "اصوات اصطناعية",
+  "أصوات اصطناعية",
+  "murf",
+  "elevenlabs",
+  "دريجات",
+  "daryjat",
+
+  // بزنس / مشاريع / متاجر / شركات
+  "مشروعي",
+  "مشروعي الخاص",
+  "مشروع",
+  "مشروع تجاري",
+  "مشروع اونلاين",
+  "مشروع أونلاين",
+  "البزنس",
+  "بزنس",
+  "business",
+  "startup",
+  "ستارت اب",
+  "ستارتاب",
+  "ريادة اعمال",
+  "ريادة أعمال",
+  "رائد اعمال",
+  "رائد أعمال",
+  "تسويق",
+  "تسويق رقمي",
+  "digital marketing",
+  "مبيعات",
+  "sales",
+  "تطوير الاعمال",
+  "تطوير الأعمال",
+  "تطوير مشروعي",
+  "تطوير شركتي",
+  "تطوير الشركة",
+  "ادارة الوقت",
+  "إدارة الوقت",
+  "انتاجية",
+  "الإنتاجية",
+  "productivity",
+  "نمو المشروع",
+  "نمو البزنس",
+  "زيادة العملاء",
+  "جذب عملاء",
+  "توسيع مشروعي",
+  "توسيع شركتي",
+  "زيادة التفاعل",
+  "زيادة تفاعل المشتركين",
+  "زيادة التفاعل على الصفحة",
+  "صفحة تجارية",
+  "حساب تجاري",
+  "متجر الكتروني",
+  "متجر إلكتروني",
+  "متجر اونلاين",
+  "متجر أونلاين",
+  "ecommerce",
+  "e-commerce",
+  "شوبيفاي",
+  "shopify",
+  "ووكومرس",
+  "woocommerce",
+
+  // أوتوماتيشن ومسارات عمل
+  "workflow",
+  "workflows",
+  "automation",
+  "automations",
+  "ربط الادوات",
+  "ربط الأدوات",
+  "تكامل الادوات",
+  "تكامل الأدوات",
+  "zapier",
+  "make.com",
+  "integromat",
+
+  // فلوس / دخل إضافي مرتبط بأدوات رقمية
+  "دخل اضافي",
+  "دخل إضافي",
+  "side hustle",
+  "دخل جانبي",
+  "مشروع جانبي",
+  "عمل حر",
+  "freelance",
+  "freelancing",
+  "دروب شيبنج",
+  "دروبشيبينج",
+  "تسويق بالعمولة",
+  "افلييت",
+  "affiliate",
+  "affiliate marketing",
+
+  // مصطلحات تقنية عامة مرتبطة بالـ AI
+  "ai",
+  "artificial intelligence",
+  "machine learning",
+  "deep learning",
+  "rag",
+  "retrieval augmented generation",
+  "embeddings",
+  "فيكتور",
+  "vector search",
+  "llm",
+  "large language model",
+  "agents",
+  "ai agent",
+  "agentic",
+  "fine tuning",
+  "تدريب نموذج",
+  "تخصيص نموذج"
+];
+
+const FOLLOWUP_KEYWORDS = [
+  "وضح اكثر",
+  "فسر اكثر",
+  "اشرح اكثر",
+  "كمل",
+  "تابع",
+  "زيدني",
+  "احكي اكثر",
+  "حكي اكثر",
+  "طيب بعدين",
+  "طيب شو بعدين",
+  "طيب وبعدين",
+  "خلينا نكمل",
+  "نكمل",
+  "continue",
+  "go on",
+  "tell me more",
+  "give me more",
+  "more details",
+  "more detail",
+  "explain more",
+  "explain further",
+  "go deeper"
+];
+
+/**
+ * 1-bis) كلمات بزنس قوية (بدون ذكر AI صريح)
+ * تستخدم للفصل بين "سيارات + ذكاء اصطناعي" (خارج النطاق)
+ * و "مشروعي / متجري / شركتي / مبيعات" (داخل النطاق).
+ */
+const BUSINESS_ONLY_KEYWORDS = [
+  "مشروعي",
+  "مشروعي الخاص",
+  "مشروع",
+  "مشروع تجاري",
+  "مشروع اونلاين",
+  "مشروع أونلاين",
+  "شركتي",
+  "الشركة",
+  "شركة",
+  "بيزنس",
+  "بزنس",
+  "business",
+  "startup",
+  "ستارت اب",
+  "ستارتاب",
+  "متجر الكتروني",
+  "متجر إلكتروني",
+  "متجر اونلاين",
+  "متجر أونلاين",
+  "متجر",
+  "متجري",
+  "متجرى",
+  "حساب تجاري",
+  "صفحة تجارية",
+  "منتج رقمي",
+  "خدمة رقمية",
+  "زيادة التفاعل",
+  "زيادة تفاعل المشتركين",
+  "زيادة المبيعات",
+  "رفع المبيعات",
+  "نمو المشروع",
+  "نمو البزنس",
+  "تسويق",
+  "تسويق رقمي",
+  "marketing",
+  "مبيعات",
+  "sales",
+  "عمل حر",
+  "freelance",
+  "دخل إضافي",
+  "دخل اضافي",
+  "side hustle"
+];
+
+// 2) ترحيب
+const GREETING_KEYWORDS = [
+  "مرحبا",
+  "مرحباا",
+  "اهلا",
+  "أهلا",
+  "اهلاً",
+  "أهلاً",
+  "السلام عليكم",
+  "هاي",
+  "هلا",
+  "هلا والله",
+  "هلو",
+  "hi",
+  "hello",
+  "hey",
+  "good morning",
+  "good evening",
+  "مساء الخير",
+  "صباح الخير"
+];
+
+// 3) شكر / إيجابية
+const THANKS_POSITIVE_KEYWORDS = [
+  "شكرا",
+  "شكراً",
+  "شكرن",
+  "ثانكس",
+  "يعطيك العافية",
+  "يعطيكو العافية",
+  "يسلموا",
+  "تسلم",
+  "ممتاز",
+  "رائع",
+  "حلو",
+  "جميل",
+  "perfect",
+  "thanks",
+  "thank you",
+  "great",
+  "awesome",
+  "useful",
+  "افدتني",
+  "فدتني",
+  "افدتني كثير",
+  "مفيد جدا",
+  "مفيد جدًا"
+];
+
+// 4) مزاج سلبي / إحباط
+const NEGATIVE_MOOD_KEYWORDS = [
+  "محبط",
+  "محبطة",
+  "تعبان",
+  "تعبانة",
+  "زهقان",
+  "زهقانه",
+  "زعلان",
+  "زعلانه",
+  "فاشل",
+  "حاس حالي فاشل",
+  "حاسة حالي فاشلة",
+  "يائس",
+  "يائسة",
+  "احبطت",
+  "تعيس",
+  "مكتئب",
+  "محبط جدا",
+  "مدايق",
+  "متضايق",
+  "مش نافع",
+  "مش نافع معي",
+  "مش راضي",
+  "مش راضية",
+  "failed",
+  "depressed"
+];
+
+// 5) اشتراك / نشرة
+const SUBSCRIBE_KEYWORDS = [
+  "اشترك",
+  "اشتراك",
+  "النشرة",
+  "نشرة نوفا",
+  "newsletter",
+  "mailing list",
+  "subscribe",
+  "تابع التحديثات",
+  "بريدك",
+  "بريدي",
+  "ايميل",
+  "إيميل",
+  "email updates"
+];
+
+// 6) تعاون / شراكة
+const COLLAB_KEYWORDS = [
+  "تعاون",
+  "شراكة",
+  "شريك",
+  "اريد التعاون",
+  "اريد شراكة",
+  "تعاون مع نوفا لينك",
+  "شراكة مع نوفا لينك",
+  "نعمل مع بعض",
+  "رعاية محتوى",
+  "رعايه محتوى",
+  "sponsorship",
+  "sponsored content",
+  "collab",
+  "collaboration",
+  "partnership"
+];
+
+// 7) استشارة أو شراء خدمة
+const CONSULTING_KEYWORDS = [
+  "استشارة",
+  "استشاره",
+  "استشارة مدفوعة",
+  "استشارة مدفوعه",
+  "استشارة معكم",
+  "كيف نتواصل",
+  "كيف اتواصل",
+  "احجز جلسة",
+  "احجز استشارة",
+  "book consultation",
+  "consultation",
+  "how to contact",
+  "contact you",
+  "buy service",
+  "خدماتكم"
+];
+
+// 8) استفسار عن نوفا لينك
+const NOVALINK_INFO_KEYWORDS = [
+  "ما هي نوفا لينك",
+  "ما هي نوفالينك",
+  "ما هي novalink",
+  "نوفا لينك كيف بدأت",
+  "كيف بدأت نوفا لينك",
+  "قصة نوفا لينك",
+  "novalink story",
+  "novalink mission",
+  "novalink goals",
+  "novalink vision",
+  "من هو نوفا بوت",
+  "من هي نوفا لينك",
+  "why novalink",
+  "what is novalink",
+  "من هو نوفا",
+  "من هو نوفا بوت"
+];
+
+// 9) خارج النطاق (هارد)
+const HARD_OUT_OF_SCOPE_KEYWORDS = [
+  // سيارات
+  "سيارة",
+  "سيارات",
+  "car",
+  "cars",
+  "bmw",
+  "mercedes",
+  "toyota",
+  "كيا",
+  "kia",
+  "honda",
+  "هوندا",
+  "tesla",
+  "تسلا",
+
+  // موضة / عطور
+  "عطر",
+  "عطور",
+  "برفيوم",
+  "بيرفيوم",
+  "موضة",
+  "فاشون",
+  "ازياء",
+  "أزياء",
+  "ملابس",
+  "لبس",
+  "fashion",
+  "runway",
+  "شانيل",
+  "dior",
+  "لوبوتان",
+  "شنط",
+  "حقائب",
+
+  // سفر / سياحة
+  "سفر",
+  "سياحة",
+  "سياحه",
+  "رحلات",
+  "رحلة",
+  "تذاكر طيران",
+  "طيران",
+  "فيزا",
+  "هجرة",
+  "هجره",
+  "اقامة",
+  "إقامة",
+  "تأشيرة",
+  "تاشيرة",
+  "تأشيره",
+  "تاشيره",
+  "فندق",
+  "فنادق",
+  "حجز فندق",
+  "حجوزات",
+
+  // رياضة
+  "كرة",
+  "كرة قدم",
+  "مباراة",
+  "ماتش",
+  "بطولة",
+  "رياضة",
+  "رياضه",
+  "تمرين",
+  "جيم",
+  "كمال اجسام",
+  "كمال أجسام",
+  "bodybuilding",
+
+  // موسيقى / أفلام / ألعاب
+  "موسيقى",
+  "أغنية",
+  "اغنية",
+  "أغاني",
+  "اغاني",
+  "فيلم",
+  "افلام",
+  "أفلام",
+  "مسلسل",
+  "مسلسلات",
+  "بلايستيشن",
+  "ps5",
+  "ps4",
+  "اكس بوكس",
+  "xbox",
+  "نينتندو",
+  "لعبة",
+  "العاب",
+  "ألعاب",
+
+  // تعليم جامعي / امتحانات (خارج البزنس/AI)
+  "جامعة",
+  "جامعه",
+  "امتحان",
+  "امتحانات",
+  "مدرسة",
+  "مدرسه",
+  "طلاب",
+  "طالب",
+  "معلم",
+  "معلمة"
+];
+
+/* ============== الدالة الرئيسية ============== */
+
+export async function detectNovaIntent(userMessage = "") {
+  const original = (userMessage || "").trim();
+  if (!original) {
+    return {
+      intentId: "casual",
+      confidence: 0,
+      language: "ar",
+      dialectHint: "msa",
+      toneHint: "neutral",
+      suggestedCard: null,
+      aiScore: 0,
+      bizScore: 0,
+      followupScore: 0
+    };
+  }
+
+  const language = detectLanguage(original);
+  const clean = normalize(original);
+  const dialectHint = language === "ar" ? detectDialect(clean) : "en";
+
+  // =========================
+  // 1) حساب السكور لكل نية
+  // =========================
+  const aiScore = scoreByKeywords(clean, AI_BUSINESS_KEYWORDS);
+  const bizScore = scoreByKeywords(clean, BUSINESS_ONLY_KEYWORDS);
+  const followupScore = scoreByKeywords(clean, FOLLOWUP_KEYWORDS);
+  const greetScore = scoreByKeywords(clean, GREETING_KEYWORDS);
+  const thanksScore = scoreByKeywords(clean, THANKS_POSITIVE_KEYWORDS);
+  const negativeScore = scoreByKeywords(clean, NEGATIVE_MOOD_KEYWORDS);
+  const subscribeScore = scoreByKeywords(clean, SUBSCRIBE_KEYWORDS);
+  const collabScore = scoreByKeywords(clean, COLLAB_KEYWORDS);
+  const consultScore = scoreByKeywords(clean, CONSULTING_KEYWORDS);
+  const novalinkScore = scoreByKeywords(clean, NOVALINK_INFO_KEYWORDS);
+  const hardOutScope = scoreByKeywords(clean, HARD_OUT_OF_SCOPE_KEYWORDS);
+
+  const buildResult = (payload) => ({
+    ...payload,
+    aiScore,
+    bizScore,
+    followupScore
+  });
+
+  // =========================
+  // 2) كشف "خارج النطاق" بقوة
+  //    أي موضوع طبخ/طقس/سيارات/موضة/طب... بدون بزنس
+  // =========================
+  if (hardOutScope > 0 && bizScore === 0) {
+    return buildResult({
+      intentId: "out_of_scope",
+      confidence: 0.95,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard: null
+    });
+  }
+
+  // =========================
+  // 3) نوايا تعريف نوفا لينك / نوفا بوت بحتة
+  // =========================
+  if (novalinkScore > 0 && aiScore === 0) {
+    return buildResult({
+      intentId: "novalink_info",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard: null
+    });
+  }
+
+  // =========================
+  // 4) استشارة أو شراء خدمة
+  // =========================
+  if (consultScore > 0) {
+    return buildResult({
+      intentId: "consulting_purchase",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard: "bot_lead"
+    });
+  }
+
+  // =========================
+  // 5) تعاون / شراكة
+  // =========================
+  if (collabScore > 0) {
+    return buildResult({
+      intentId: "collaboration",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard: "collaboration"
+    });
+  }
+
+  // =========================
+  // 6) اشتراك / نشرة
+  // =========================
+  if (subscribeScore > 0) {
+    return buildResult({
+      intentId: "subscribe_interest",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "positive",
+      suggestedCard: "subscribe"
+    });
+  }
+
+  // =========================
+  // 7) شكر / إيجابية
+  // =========================
+  if (thanksScore > 0 && aiScore === 0) {
+    return buildResult({
+      intentId: "thanks_positive",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "positive",
+      suggestedCard: "subscribe"
+    });
+  }
+
+  // =========================
+  // 8) مزاج سلبي / دعم معنوي
+  // =========================
+  if (negativeScore > 0 && aiScore === 0) {
+    return buildResult({
+      intentId: "negative_mood",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "negative",
+      suggestedCard: null
+    });
+  }
+
+  // =========================
+  // 9) ترحيب خالص (بدون سياق آخر)
+  // =========================
+  if (greetScore > 0 && original.length <= 40 && aiScore === 0) {
+    return buildResult({
+      intentId: "greeting",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "positive",
+      suggestedCard: null
+    });
+  }
+
+  // =========================
+  // 10) استفسار عن نوفا لينك + AI معًا
+  //      (مثلاً: ما هي نوفا لينك ولماذا أنشئت؟)
+  // =========================
+  if (novalinkScore > 0 && aiScore > 0) {
+    return buildResult({
+      intentId: "novalink_info",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard: null
+    });
+  }
+
+  // =========================
+  // 11) نية الذكاء الاصطناعي وتطوير الأعمال (ONLY AI)
+  // =========================
+  if (aiScore > 0 || bizScore > 0) {
+    let conf = 0.7;
+    const combinedScore = aiScore + bizScore;
+    if (combinedScore >= 4) conf = 0.95;
+    else if (combinedScore >= 2) conf = 0.85;
+
+    let suggestedCard = null;
+    if (consultScore > 0) {
+      suggestedCard = "bot_lead";
+    } else if (subscribeScore > 0) {
+      suggestedCard = "business_subscribe";
     }
+
+    return buildResult({
+      intentId: "ai_business",
+      confidence: conf,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard
+    });
   }
-  for (const kw of businessKeywords) {
-    const needle = kw.toLowerCase();
-    let index = text.indexOf(needle);
-    while (index !== -1) {
-      bizScore += 1;
-      index = text.indexOf(needle, index + needle.length);
-    }
-  }
-  return { aiScore, bizScore };
+
+  // =========================
+  // 12) إذا لا يوجد أي تطابق واضح
+  //      → تعامل كـ خارج النطاق
+  // =========================
+  return buildResult({
+    intentId: "out_of_scope",
+    confidence: 0.6,
+    language,
+    dialectHint,
+    toneHint: "neutral",
+    suggestedCard: null
+  });
 }
-function classifyOriginalIntent(message) {
-  const lower = message.toLowerCase();
-  if (lower.includes("10406621")) return "developer_identity";
-  const greetingList = ["hi","hello","hey","السلام عليكم","مرحبا","اهلا","أهلاً","هلا","صباح الخير","مساء الخير"];
-  for (const word of greetingList) if (lower.includes(word.toLowerCase())) return "greeting";
-  const goodbyeList = ["bye","goodbye","مع السلامة","إلى اللقاء","اشوفك","أشوفك","يلا سلام"];
-  for (const word of goodbyeList) if (lower.includes(word.toLowerCase())) return "goodbye";
-  const thanksList = ["شكرا","شكرًا","thx","thanks","thank you","يعطيك العافية","مشكور","ممتاز","رائع","great","awesome"];
-  for (const word of thanksList) if (lower.includes(word.toLowerCase())) return "thanks_positive";
-  const negativeList = ["مش فاهم","غير واضح","محبط","سيء","غلط","annoyed","confused","bad answer","مش مفيد"];
-  for (const word of negativeList) if (lower.includes(word.toLowerCase())) return "negative_mood";
-  const novalinkTriggers = ["novalink","about nova","about novalink","ما هي novalink","ما هي نوفالينك","ايش novalink","إيش novalink"];
-  for (const word of novalinkTriggers) if (lower.includes(word.toLowerCase())) return "novalink_info";
-  const novabotTriggers = ["novabot","nova bot","عن البوت","كيف تعمل","من بناك","who built you"];
-  for (const word of novabotTriggers) if (lower.includes(word.toLowerCase())) return "novabot_info";
-  const subscribeTriggers = ["subscribe","newsletter","اشترك","اشتراك","قائمة بريدية","أريد الاشتراك"];
-  for (const word of subscribeTriggers) if (lower.includes(word.toLowerCase())) return "subscribe_interest";
-  const consultingTriggers = ["استشارة","consulting","paid","مدفوعة","build a bot","خدمة مدفوعة","تطبيق الذكاء الاصطناعي"];
-  for (const word of consultingTriggers) if (lower.includes(word.toLowerCase())) return "consulting_purchase";
-  const collaborationTriggers = ["شراكة","تعاون","partner","sponsor","sponsorship"];
-  for (const word of collaborationTriggers) if (lower.includes(word.toLowerCase())) return "collaboration";
-  const goodbyeVariants = ["farewell","see you","catch you later"];
-  for (const word of goodbyeVariants) if (lower.includes(word.toLowerCase())) return "goodbye";
-  const greetingVariants = ["greetings","good morning","good evening"];
-  for (const word of greetingVariants) if (lower.includes(word.toLowerCase())) return "greeting";
-  const thankVariants = ["appreciate","grateful"];
-  for (const word of thankVariants) if (lower.includes(word.toLowerCase())) return "thanks_positive";
-  return "ai_business";
-}
-function deriveEffectiveIntent(originalIntentId, aiScore, bizScore, message) {
-  if (originalIntentId === "developer_identity") return "developer_identity";
-  const totalScore = aiScore + bizScore;
-  const lower = message.toLowerCase();
-  const offTopic = ["football","soccer","كرة","طبخ","cooking","fashion","celebrity","celeb","سياسة","politics","رياضة","رياضه","movies","أفلام","ألعاب","games","relationship","علاقة"];
-  if (totalScore === 0) {
-    for (const word of offTopic) if (lower.includes(word.toLowerCase())) return "out_of_scope";
-  }
-  if (totalScore >= 1) return "ai_business";
-  return originalIntentId;
-}
-function deriveSessionTier(effectiveIntentId) {
-  if (effectiveIntentId === "greeting" || effectiveIntentId === "goodbye" || effectiveIntentId === "thanks_positive") return "non_ai";
-  if (effectiveIntentId === "novalink_info" || effectiveIntentId === "novabot_info" || effectiveIntentId === "subscribe_interest" || effectiveIntentId === "collaboration" || effectiveIntentId === "consulting_purchase") return "semi_ai";
-  return "strong_ai";
-}
-function computeHasAIMomentum(effectiveIntentId, aiScore, bizScore) {
-  if (effectiveIntentId === "ai_business") return true;
-  return aiScore + bizScore >= 1;
-}
-function computeAllowGemini(effectiveIntentId) {
-  if (effectiveIntentId === "greeting" || effectiveIntentId === "goodbye" || effectiveIntentId === "thanks_positive" || effectiveIntentId === "negative_mood" || effectiveIntentId === "novalink_info" || effectiveIntentId === "novabot_info" || effectiveIntentId === "developer_identity") return false;
-  return true;
-}
-export function detectNovaIntent(input) {
-  const normalized = normalizeMessage(input && input.message);
-  const treatedMessage = normalized === "" ? "hello" : normalized;
-  const language = detectLanguage(treatedMessage, input && input.languageHint);
-  const dialectHint = language === "ar" ? detectDialect(treatedMessage) : "neutral";
-  const { aiScore, bizScore } = scoreKeywords(treatedMessage);
-  const originalIntentId = classifyOriginalIntent(treatedMessage);
-  const effectiveIntentId = deriveEffectiveIntent(originalIntentId, aiScore, bizScore, treatedMessage);
-  const sessionTier = deriveSessionTier(effectiveIntentId);
-  const hasAIMomentum = computeHasAIMomentum(effectiveIntentId, aiScore, bizScore);
-  const allowGemini = computeAllowGemini(effectiveIntentId);
-  return { originalIntentId, effectiveIntentId, sessionTier, hasAIMomentum, allowGemini, language, dialectHint };
-}
-export default detectNovaIntent;
