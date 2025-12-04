@@ -656,10 +656,6 @@ function wrapAiAnswerWithLink(aiText = "", item) {
 
 /* =============== كشف النوايا السياقية =============== */
 
-function hasDeveloperCode(text = "") {
-  const lower = text.toLowerCase();
-  return lower.includes("novadev2024") || lower.includes("novabot-dev");
-}
 
 function isGoodbyeMessage(text = "") {
   const lower = text.toLowerCase();
