@@ -16,17 +16,33 @@ import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 
 // -------------------------------------------
-// Load Knowledge V5 on boot
+// Load Knowledge V5 on boot (SAFE / OPTIONAL)
 // -------------------------------------------
-const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL;
+const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL || "";
 
+// نحاول تحميل المعرفة فقط إذا كان الدماغ يدعم ذلك فعلاً
 (async () => {
   try {
+    if (!KNOWLEDGE_URL) {
+      console.log("ℹ️ KNOWLEDGE_V5_URL is not set — skipping knowledge preload.");
+      return;
+    }
+
+    const loaderFn =
+      (novaBrainSystem && typeof novaBrainSystem.loadKnowledgeFromURL === "function")
+        ? novaBrainSystem.loadKnowledgeFromURL
+        : null;
+
+    if (!loaderFn) {
+      console.log("ℹ️ novaBrainSystem.loadKnowledgeFromURL not found — skipping knowledge preload.");
+      return;
+    }
+
     console.log("📚 Loading Nova Knowledge V5...");
-    await novaBrainSystem.loadKnowledgeFromURL(KNOWLEDGE_URL);
+    await loaderFn.call(novaBrainSystem, KNOWLEDGE_URL);
     console.log("✅ Knowledge V5 loaded successfully!");
   } catch (err) {
-    console.error("❌ Failed to load knowledge:", err);
+    console.error("❌ Failed to load knowledge (non-fatal):", err);
   }
 })();
 
@@ -53,12 +69,11 @@ function softSecurityReply(lang) {
 // Layer 1: Domain Lock
 // ============================================================
 function parseAllowedOrigins(envVal = "") {
-  return envVal.split(",").map(v => v.trim()).filter(Boolean);
+  return envVal.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.NOVABOT_ALLOWED_ORIGINS || "");
-const BLOCK_UNKNOWN_ORIGIN =
-  String(process.env.NOVABOT_BLOCK_UNKNOWN_ORIGIN || "true") === "true";
+const BLOCK_UNKNOWN_ORIGIN = String(process.env.NOVABOT_BLOCK_UNKNOWN_ORIGIN || "true") === "true";
 
 function getRequestOrigin(req) {
   if (req.headers.origin) return req.headers.origin;
@@ -82,8 +97,7 @@ function isOriginAllowed(origin) {
 // Layer 2: Signed Session Token
 // ============================================================
 const SESSION_SECRET = process.env.NOVABOT_SESSION_SECRET || "";
-const REQUIRE_SESSION =
-  String(process.env.NOVABOT_REQUIRE_SESSION || "false") === "true";
+const REQUIRE_SESSION = String(process.env.NOVABOT_REQUIRE_SESSION || "false") === "true";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 
@@ -152,20 +166,25 @@ const RATE_LIMIT_PER_MIN = Number(process.env.NOVABOT_RATE_LIMIT_PER_MIN || 30);
 const BURST_WINDOW_MS = Number(process.env.NOVABOT_BURST_WINDOW_MS || 3000);
 const BURST_MAX = Number(process.env.NOVABOT_BURST_MAX || 5);
 
-const rateStore = new Map(); // origin → timestamps[]
+const rateStore = new Map(); // key → timestamps[]
+function firewallKey(origin, req) {
+  // الأصل + UA يعطيك ثبات أفضل على الموبايل/متصفحات مختلفة
+  const ua = String(req.headers["user-agent"] || "").slice(0, 80);
+  return `${origin || "unknown"}|${ua}`;
+}
 
-function firewallCheck(origin) {
+function firewallCheck(key) {
   const now = Date.now();
-  const bucket = rateStore.get(origin) || [];
+  const bucket = rateStore.get(key) || [];
   const oneMinuteAgo = now - 60_000;
 
-  const recent = bucket.filter(ts => ts > oneMinuteAgo);
+  const recent = bucket.filter((ts) => ts > oneMinuteAgo);
   recent.push(now);
-  rateStore.set(origin, recent);
+  rateStore.set(key, recent);
 
   if (recent.length > RATE_LIMIT_PER_MIN) return false;
 
-  const burst = recent.filter(ts => ts > now - BURST_WINDOW_MS);
+  const burst = recent.filter((ts) => ts > now - BURST_WINDOW_MS);
   if (burst.length > BURST_MAX) return false;
 
   return true;
@@ -174,8 +193,7 @@ function firewallCheck(origin) {
 // ============================================================
 // Layer 4: Turnstile Proof
 // ============================================================
-const REQUIRE_TURNSTILE =
-  String(process.env.NOVABOT_REQUIRE_TURNSTILE || "false") === "true";
+const REQUIRE_TURNSTILE = String(process.env.NOVABOT_REQUIRE_TURNSTILE || "false") === "true";
 const TURNSTILE_SECRET = process.env.NOVABOT_TURNSTILE_SECRET || "";
 
 async function verifyTurnstileToken(token, ip = "") {
@@ -215,20 +233,17 @@ const server = http.createServer(async (req, res) => {
   if (origin) {
     if (!isOriginAllowed(origin)) {
       res.writeHead(403, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: false }));
+      return res.end(JSON.stringify({ ok: false, error: "Access denied (origin not allowed)" }));
     }
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   } else if (BLOCK_UNKNOWN_ORIGIN) {
     res.writeHead(403, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: false }));
+    return res.end(JSON.stringify({ ok: false, error: "Access denied (unknown origin)" }));
   }
 
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, X-NOVABOT-SESSION, X-NOVABOT-TS-TOKEN"
-  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-NOVABOT-SESSION, X-NOVABOT-TS-TOKEN");
   res.setHeader("Cache-Control", "no-store");
 
   if (req.method === "OPTIONS") {
@@ -246,28 +261,35 @@ const server = http.createServer(async (req, res) => {
   // ---------- Health ----------
   if (req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, status: "running", time: Date.now() }));
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        status: "running",
+        time: Date.now(),
+        require_turnstile: REQUIRE_TURNSTILE,
+        require_session: REQUIRE_SESSION,
+        allowed_origins: ALLOWED_ORIGINS
+      })
+    );
   }
 
   if (req.method !== "POST") {
-    res.writeHead(405);
-    return res.end();
+    res.writeHead(405, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ ok: false, error: "Method not allowed" }));
   }
 
   // ---------- Layer 2 ----------
   if (REQUIRE_SESSION) {
-    const verdict = verifySessionToken(
-      String(req.headers["x-novabot-session"] || ""),
-      origin || ""
-    );
+    const verdict = verifySessionToken(String(req.headers["x-novabot-session"] || ""), origin || "");
     if (!verdict.ok) {
       res.writeHead(401, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ ok: false }));
+      return res.end(JSON.stringify({ ok: false, error: "Unauthorized (invalid session)" }));
     }
   }
 
+  // ---------- Body ----------
   let body = "";
-  req.on("data", chunk => (body += chunk));
+  req.on("data", (chunk) => (body += chunk));
 
   req.on("end", async () => {
     try {
@@ -276,24 +298,23 @@ const server = http.createServer(async (req, res) => {
       const lang = detectLang(msg);
 
       if (!msg) {
-        res.writeHead(400);
-        return res.end(JSON.stringify({ ok: false }));
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: false, error: "Empty message" }));
       }
 
       // ---------- Layer 3 ----------
-      if (!firewallCheck(origin || "unknown")) {
+      const fwKey = firewallKey(origin || "unknown", req);
+      if (!firewallCheck(fwKey)) {
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ ok: true, reply: softReply(lang) }));
       }
 
       // ---------- Layer 4 ----------
-      // token arrives in header for cleanliness (not in body)
       const tsToken = String(req.headers["x-novabot-ts-token"] || "");
-      const ip = (req.socket?.remoteAddress || "").toString();
-
+      const ip = String(req.socket?.remoteAddress || "");
       const v = await verifyTurnstileToken(tsToken, ip);
+
       if (!v.ok) {
-        // هدوء… لا نصرخ ولا نُرجع 429
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(JSON.stringify({ ok: true, reply: softSecurityReply(lang) }));
       }
@@ -306,14 +327,14 @@ const server = http.createServer(async (req, res) => {
       return res.end(
         JSON.stringify({
           ok: true,
-          reply: brainReply.reply,
-          actionCard: brainReply.actionCard || null
+          reply: brainReply?.reply || "",
+          actionCard: brainReply?.actionCard || null
         })
       );
     } catch (e) {
       console.error("🔥 Server error:", e);
-      res.writeHead(500);
-      return res.end(JSON.stringify({ ok: false }));
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, error: "Server error" }));
     }
   });
 });
