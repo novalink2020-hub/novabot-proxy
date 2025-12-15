@@ -4,6 +4,7 @@
 // 1) Domain Lock (CORS Origin allowlist)
 // 2) Signed Session Token (short-lived)
 // 3) Brain Firewall (Rate + Burst Protection)
+// 4) Turnstile Proof (anti-abuse / watermark)
 // ===========================================
 
 import http from "http";
@@ -30,6 +31,25 @@ const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL;
 })();
 
 // ============================================================
+// Small utils
+// ============================================================
+function detectLang(text = "") {
+  return /[A-Za-z]/.test(text) ? "en" : "ar";
+}
+
+function softReply(lang) {
+  return lang === "en"
+    ? "Let’s take a breath… and continue in a moment 🙂"
+    : "دعنا نأخذ نفسًا… وأكمل بعد لحظة 🙂";
+}
+
+function softSecurityReply(lang) {
+  return lang === "en"
+    ? "Quick security check… please try again in a moment 🙂"
+    : "تحقق أمني سريع… جرّب مرة أخرى بعد لحظة 🙂";
+}
+
+// ============================================================
 // Layer 1: Domain Lock
 // ============================================================
 function parseAllowedOrigins(envVal = "") {
@@ -42,6 +62,7 @@ const BLOCK_UNKNOWN_ORIGIN =
 
 function getRequestOrigin(req) {
   if (req.headers.origin) return req.headers.origin;
+
   const ref = req.headers.referer;
   if (ref) {
     try {
@@ -99,7 +120,6 @@ function issueSessionToken(origin) {
   const iat = Date.now();
   const exp = iat + SESSION_TTL_MS;
   const nonce = crypto.randomBytes(12).toString("hex");
-
   const payload = base64url(JSON.stringify({ o: origin, iat, exp, n: nonce }));
   const sig = sign(payload);
   return `${payload}.${sig}`;
@@ -134,10 +154,6 @@ const BURST_MAX = Number(process.env.NOVABOT_BURST_MAX || 5);
 
 const rateStore = new Map(); // origin → timestamps[]
 
-function detectLang(text = "") {
-  return /[A-Za-z]/.test(text) ? "en" : "ar";
-}
-
 function firewallCheck(origin) {
   const now = Date.now();
   const bucket = rateStore.get(origin) || [];
@@ -147,14 +163,44 @@ function firewallCheck(origin) {
   recent.push(now);
   rateStore.set(origin, recent);
 
-  // Rate per minute
   if (recent.length > RATE_LIMIT_PER_MIN) return false;
 
-  // Burst
   const burst = recent.filter(ts => ts > now - BURST_WINDOW_MS);
   if (burst.length > BURST_MAX) return false;
 
   return true;
+}
+
+// ============================================================
+// Layer 4: Turnstile Proof
+// ============================================================
+const REQUIRE_TURNSTILE =
+  String(process.env.NOVABOT_REQUIRE_TURNSTILE || "false") === "true";
+const TURNSTILE_SECRET = process.env.NOVABOT_TURNSTILE_SECRET || "";
+
+async function verifyTurnstileToken(token, ip = "") {
+  if (!REQUIRE_TURNSTILE) return { ok: true, skipped: true };
+  if (!TURNSTILE_SECRET) return { ok: false, reason: "missing_secret" };
+  if (!token) return { ok: false, reason: "missing_token" };
+
+  try {
+    const form = new URLSearchParams();
+    form.set("secret", TURNSTILE_SECRET);
+    form.set("response", token);
+    if (ip) form.set("remoteip", ip);
+
+    const resp = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString()
+    });
+
+    const data = await resp.json().catch(() => ({}));
+    if (data && data.success) return { ok: true };
+    return { ok: false, reason: "not_verified", details: data };
+  } catch {
+    return { ok: false, reason: "verify_failed" };
+  }
 }
 
 // ============================================================
@@ -179,7 +225,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-NOVABOT-SESSION");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, X-NOVABOT-SESSION, X-NOVABOT-TS-TOKEN"
+  );
   res.setHeader("Cache-Control", "no-store");
 
   if (req.method === "OPTIONS") {
@@ -187,7 +236,7 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  // ---------- Session endpoint ----------
+  // ---------- GET /session ----------
   if (req.method === "GET" && req.url?.startsWith("/session")) {
     const token = issueSessionToken(origin || "");
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -224,6 +273,8 @@ const server = http.createServer(async (req, res) => {
     try {
       const data = JSON.parse(body || "{}");
       const msg = (data.message || "").trim();
+      const lang = detectLang(msg);
+
       if (!msg) {
         res.writeHead(400);
         return res.end(JSON.stringify({ ok: false }));
@@ -231,14 +282,20 @@ const server = http.createServer(async (req, res) => {
 
       // ---------- Layer 3 ----------
       if (!firewallCheck(origin || "unknown")) {
-        const lang = detectLang(msg);
-        const softReply =
-          lang === "en"
-            ? "Let’s take a breath… and continue in a moment 🙂"
-            : "دعنا نأخذ نفسًا… وأكمل بعد لحظة 🙂";
-
         res.writeHead(200, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ ok: true, reply: softReply }));
+        return res.end(JSON.stringify({ ok: true, reply: softReply(lang) }));
+      }
+
+      // ---------- Layer 4 ----------
+      // token arrives in header for cleanliness (not in body)
+      const tsToken = String(req.headers["x-novabot-ts-token"] || "");
+      const ip = (req.socket?.remoteAddress || "").toString();
+
+      const v = await verifyTurnstileToken(tsToken, ip);
+      if (!v.ok) {
+        // هدوء… لا نصرخ ولا نُرجع 429
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, reply: softSecurityReply(lang) }));
       }
 
       // ---------- Normal flow ----------
