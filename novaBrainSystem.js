@@ -615,36 +615,22 @@ function buildNegativeMoodReply() {
 }
 
 function buildSubscribeInterestReply() {
-  return `📬 يسعدني حماسك للمتابعة  
-بدل التشتت بين عشرات المصادر،  
-يمكنك أن تصلك الخلاصة مباشرة — بهدوء، وبدون إزعاج.`;
+  return `يسعدني حماسك للمتابعة ✉️<br>
+ يمكنك استخدام بطاقة الاشتراك الظاهرة في الواجهة لإضافة بريدك، لتصلك خلاصة أفكار وأدوات نوفا لينك المرتبطة بالذكاء الاصطناعي وتطوير الأعمال.<br>
+ كل رسالة ستكون أقرب إلى "خلاصة عملية" منها إلى نشرة تقليدية.`;
 }
 
 function buildCollaborationReply() {
-  return `🤝 إن كنت تفكّر بتعاون، شراكة، أو فكرة مشتركة ذات قيمة حقيقية،  
-استخدم بطاقة التعاون في الواجهة، وسنعود إليك بعد مراجعة الفكرة.`;
-}
-
-function buildBusinessSubscribeReply() {
-  return `👨‍💻 كثير من روّاد الأعمال يدركون أن الذكاء الاصطناعي مهم،  
-لكنهم لا يجدون وقتًا لتجربة كل أداة أو متابعة كل تحديث.  
-هنا نحاول اختصار الطريق، لا تعقيده.`;
+  return `نوفا لينك منفتحة على التعاونات المهنية الجادة المرتبطة بالذكاء الاصطناعي للأعمال وتطوير البوتات الذكية.<br><br>
+ يمكن أن يكون التعاون على شكل رعاية محتوى، ورش عمل، ندوات مشتركة، أو مشاريع رقمية تخدم روّاد الأعمال.<br><br>
+ استخدم بطاقة التعاون في الواجهة لترك تفاصيلك، وسنعود إليك بعد مراجعة الفكرة.`;
 }
 
 function buildConsultingPurchaseReply() {
-  return `💬 أغلب المشاريع لا تخسر بسبب ضعف المنتج،  
-الحل أحيانًا أبسط مما نتوقع.`;
+  return `طلب استشارة أو بوت مخصص لعملك خطوة عملية جدًا 💼<br><br>
+ يمكننا مساعدتك في بناء بوت دردشة مخصص لعملك، أو رسم مسار عمل ذكي لاستخدام أدوات الذكاء الاصطناعي في مشروعك.<br>
+ استخدم بطاقة "بوت دردشة لعملك" لحجز جلسة تعريفية سريعة، وتوضيح نوع النشاط والجمهور وأهدافك من البوت.`;
 }
-function buildDeveloperCardReplyAr() {
-  return `✨ أحيانًا من المهم أن تعرف من يقف خلف الأداة التي تستخدمها،  
-لا بدافع الفضول، بل لبناء الثقة.`;
-}
-
-function buildDeveloperCardReplyEn() {
-  return `✨ Sometimes, knowing who stands behind the tool matters —  
-not out of curiosity, but to build trust.`;
-}
-
 
 function buildNovaLinkInfoReply() {
   return NOVABOT_TEXT_PACKAGE.aboutNovaLink;
@@ -684,6 +670,26 @@ function isGoodbyeMessage(text = "") {
     arabicBye.some((kw) => t.includes(kw)) ||
     englishBye.some((kw) => t.includes(kw))
   );
+}
+
+/* =============== بطاقة المطوّر – الكود السري 10406621 =============== */
+
+function hasDeveloperCode(text = "") {
+  return (text || "").includes("10406621");
+}
+
+function buildDeveloperCardReplyAr() {
+  return `✨ لمحة سريعة عن الشخص الذي طوّر نوفا بوت ودرّبه…<br>
+ 👨‍💻 “محمد أبو سنينة” — مطوّر عربي جمع خبرته بين القطاع المصرفي والذكاء الاصطناعي.<br>
+ ينظر إلى الذكاء الاصطناعي كفرصة لإعادة تعريف أدوارنا في العمل، وليس كخطر يهددها، ويبني نوفا لينك كمساحة عملية تساعد روّاد الأعمال على استخدام الأدوات الذكية بثقة ووضوح.`;
+}
+
+function buildDeveloperCardReplyEn() {
+  return `👨‍💻 A quick snapshot of the person behind NovaBot and NovaLink:<br><br>
+ - An Arabic creator who moved from the banking world into AI for business.<br>
+ - Building NovaLink as a practical space to help entrepreneurs use AI tools step by step, not just read about them.<br>
+ - Sees AI as a chance to redefine our role at work, not just a threat to it.<br><br>
+ This card is for those who care about the human behind the system, not just the answers on the screen ✨`;
 }
 
 /* =============== استنتاج نوع الجلسة (AI Session) من التاريخ =============== */
@@ -902,6 +908,14 @@ export async function novaBrainSystem(request) {
     return finalizeResponse(getRandomGenericReply(), { matchType: "empty" });
   }
 
+  // 0.1) بطاقة المطوّر
+  if (hasDeveloperCode(userText)) {
+    const reply =
+      language === "en" ? buildDeveloperCardReplyEn() : buildDeveloperCardReplyAr();
+
+    return finalizeResponse(reply, { actionCard: "developer_identity", matchType: "fixed" });
+  }
+
   // 0.2) وداع
   if (isGoodbyeMessage(userText)) {
     return finalizeResponse(buildGoodbyeReply(), { resetConcepts: true, matchType: "goodbye" });
@@ -913,75 +927,58 @@ export async function novaBrainSystem(request) {
   }
 
   // 1) نوايا ثابتة (طالما لسنا مجبرين على AI)
-if (!forceAI) {
-  if (originalIntentId === "greeting") {
-    return finalizeResponse(
-      buildGreetingReply(sessionHistory.length > 0),
-      { matchType: "fixed" }
-    );
-  }
+  if (!forceAI) {
+    if (originalIntentId === "greeting") {
+      return finalizeResponse(buildGreetingReply(sessionHistory.length > 0), { matchType: "fixed" });
+    }
 
-  if (originalIntentId === "thanks_positive") {
-    return finalizeResponse(
-      buildThanksPositiveReply(),
-      { actionCard: "subscribe", matchType: "fixed" }
-    );
-  }
+    if (originalIntentId === "thanks_positive") {
+      return finalizeResponse(buildThanksPositiveReply(), {
+        actionCard: request.suggestedCard || "subscribe",
+        matchType: "fixed"
+      });
+    }
 
-  if (originalIntentId === "negative_mood") {
-    return finalizeResponse(
-      buildNegativeMoodReply(),
-      { matchType: "fixed" }
-    );
-  }
+    if (originalIntentId === "negative_mood") {
+      return finalizeResponse(buildNegativeMoodReply(), { matchType: "fixed" });
+    }
 
-  if (originalIntentId === "subscribe_interest") {
-    return finalizeResponse(
-      buildSubscribeInterestReply(),
-      { actionCard: "subscribe", matchType: "fixed" }
-    );
-  }
+    if (originalIntentId === "subscribe_interest") {
+      return finalizeResponse(buildSubscribeInterestReply(), {
+        actionCard: request.suggestedCard || "subscribe",
+        matchType: "fixed"
+      });
+    }
 
-  if (originalIntentId === "business_interest") {
-    return finalizeResponse(
-      buildBusinessSubscribeReply(),
-      { actionCard: "business_subscribe", matchType: "fixed" }
-    );
-  }
+    if (originalIntentId === "collaboration") {
+      return finalizeResponse(buildCollaborationReply(), {
+        actionCard: request.suggestedCard || "collaboration",
+        matchType: "fixed"
+      });
+    }
 
-  if (originalIntentId === "consulting_purchase") {
-    return finalizeResponse(
-      buildConsultingPurchaseReply(),
-      { actionCard: "bot_lead", matchType: "fixed" }
-    );
-  }
+    if (originalIntentId === "consulting_purchase") {
+      return finalizeResponse(buildConsultingPurchaseReply(), {
+        actionCard: request.suggestedCard || "bot_lead",
+        matchType: "fixed"
+      });
+    }
 
-  if (originalIntentId === "collaboration") {
-    return finalizeResponse(
-      buildCollaborationReply(),
-      { actionCard: "collaboration", matchType: "fixed" }
-    );
-  }
+    if (originalIntentId === "novalink_info") {
+      return finalizeResponse(buildNovaLinkInfoReply(), { matchType: "fixed" });
+    }
 
+    if (originalIntentId === "novabot_info") {
+      return finalizeResponse(buildNovaBotInfoReply(), { matchType: "fixed" });
+    }
 
-  if (originalIntentId === "novalink_info") {
-    return finalizeResponse(buildNovaLinkInfoReply(), { matchType: "fixed" });
-  }
-
-  if (originalIntentId === "novabot_info") {
-    return finalizeResponse(buildNovaBotInfoReply(), { matchType: "fixed" });
-  }
-
-  if (originalIntentId === "out_of_scope" || originalIntentId === "casual") {
-    if (!isAISession && !isAIQuestion) {
-      return finalizeResponse(
-        getRandomGenericReply(),
-        { matchType: "out_of_scope" }
-      );
+    if (originalIntentId === "out_of_scope" || originalIntentId === "casual") {
+      if (!isAISession && !isAIQuestion) {
+        return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
+      }
+      // لو الجلسة AI لكن النية casual سنسمح لـ Gemini لاحقًا
     }
   }
-}
-
 
   // 2) تحميل المعرفة + أفضل تطابق (للمجالات ذات الصلة فقط)
   const allowKnowledge = effectiveIntentId === "ai_business" && allowGemini;
