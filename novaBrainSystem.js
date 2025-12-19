@@ -897,26 +897,34 @@ export async function novaBrainSystem(request) {
       return finalizeResponse(buildNegativeMoodReply(), { matchType: "fixed" });
     }
 
-    if (originalIntentId === "subscribe_interest") {
-      return finalizeResponse(getRandomGenericReply(), {
-        actionCard: request.suggestedCard || null,
-        matchType: "fixed"
-      });
-    }
+  if (originalIntentId === "subscribe_interest") {
+  return finalizeResponse("", {
+    actionCard: request.suggestedCard || null,
+    matchType: "card_handoff"
+  });
+}
 
-    if (originalIntentId === "collaboration") {
-      return finalizeResponse(getRandomGenericReply(), {
-        actionCard: request.suggestedCard || null,
-        matchType: "fixed"
-      });
-    }
+if (originalIntentId === "collaboration") {
+  return finalizeResponse("", {
+    actionCard: request.suggestedCard || null,
+    matchType: "card_handoff"
+  });
+}
 
-    if (originalIntentId === "consulting_purchase") {
-      return finalizeResponse(getRandomGenericReply(), {
-        actionCard: request.suggestedCard || null,
-        matchType: "fixed"
-      });
-    }
+if (originalIntentId === "consulting_purchase") {
+  return finalizeResponse("", {
+    actionCard: request.suggestedCard || null,
+    matchType: "card_handoff"
+  });
+}
+
+    if (originalIntentId === "developer_identity") {
+  return finalizeResponse("", {
+    actionCard: request.suggestedCard || "developer_identity",
+    matchType: "card_handoff"
+  });
+}
+
 
     if (originalIntentId === "novalink_info") {
       return finalizeResponse(buildNovaLinkInfoReply(), { matchType: "fixed" });
