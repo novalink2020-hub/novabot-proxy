@@ -902,14 +902,6 @@ export async function novaBrainSystem(request) {
     return finalizeResponse(getRandomGenericReply(), { matchType: "empty" });
   }
 
-  // 0.1) بطاقة المطوّر
-  if (hasDeveloperCode(userText)) {
-    const reply =
-      language === "en" ? buildDeveloperCardReplyEn() : buildDeveloperCardReplyAr();
-
-    return finalizeResponse(reply, { actionCard: "developer_identity", matchType: "fixed" });
-  }
-
   // 0.2) وداع
   if (isGoodbyeMessage(userText)) {
     return finalizeResponse(buildGoodbyeReply(), { resetConcepts: true, matchType: "goodbye" });
