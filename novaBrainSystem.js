@@ -282,6 +282,9 @@ function tokenize(str = "") {
       .filter((w) => w.length >= 3)
   );
 }
+function shouldUseEnglishPreface(text = "") {
+  return /[a-zA-Z]/.test(text);
+}
 
 /* =============== تحميل قاعدة المعرفة =============== */
 
