@@ -642,7 +642,7 @@ function buildCollaborationReply() {
 function buildDeveloperIdentityReply(language = "ar") {
   // العربية هي الافتراضية دائمًا
   if (language !== "en") {
-    return `✨ أحيانًا من المهم أن تعرف من يقف خلف الأداة التي تستخدمها،
+    return `✨ من المهم أن تعرف من طوّر نوفا بوت و دربه،
 لا بدافع الفضول، بل لبناء الثقة.`;
   }
 
