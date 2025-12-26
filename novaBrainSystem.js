@@ -689,23 +689,28 @@ function isGoodbyeMessage(text = "") {
 
 /* =============== بطاقة المطوّر – الكود السري 10406621 =============== */
 
+function normalizeArabicDigits(str = "") {
+  const map = {
+    "٠": "0",
+    "١": "1",
+    "٢": "2",
+    "٣": "3",
+    "٤": "4",
+    "٥": "5",
+    "٦": "6",
+    "٧": "7",
+    "٨": "8",
+    "٩": "9"
+  };
+  return str.replace(/[٠-٩]/g, d => map[d] || d);
+}
+
 function hasDeveloperCode(text = "") {
-  return (text || "").includes("10406621");
+  const normalized = normalizeArabicDigits(text || "");
+  return normalized.includes("10406621");
 }
 
-function buildDeveloperCardReplyAr() {
-  return `✨ لمحة سريعة عن الشخص الذي طوّر نوفا بوت ودرّبه…<br>
- 👨‍💻 “محمد أبو سنينة” — مطوّر عربي جمع خبرته بين القطاع المصرفي والذكاء الاصطناعي.<br>
- ينظر إلى الذكاء الاصطناعي كفرصة لإعادة تعريف أدوارنا في العمل، وليس كخطر يهددها، ويبني نوفا لينك كمساحة عملية تساعد روّاد الأعمال على استخدام الأدوات الذكية بثقة ووضوح.`;
-}
 
-function buildDeveloperCardReplyEn() {
-  return `👨‍💻 A quick snapshot of the person behind NovaBot and NovaLink:<br><br>
- - An Arabic creator who moved from the banking world into AI for business.<br>
- - Building NovaLink as a practical space to help entrepreneurs use AI tools step by step, not just read about them.<br>
- - Sees AI as a chance to redefine our role at work, not just a threat to it.<br><br>
- This card is for those who care about the human behind the system, not just the answers on the screen ✨`;
-}
 
 /* =============== استنتاج نوع الجلسة (AI Session) من التاريخ =============== */
 
@@ -925,8 +930,19 @@ export async function novaBrainSystem(request) {
 
   // 0.1) بطاقة المطوّر
   if (hasDeveloperCode(userText)) {
-    const reply =
-      language === "en" ? buildDeveloperCardReplyEn() : buildDeveloperCardReplyAr();
+   // 0.1) بطاقة المطوّر
+if (hasDeveloperCode(userText)) {
+  const langPref = shouldUseEnglishPreface(userText) ? "en" : "ar";
+
+  return finalizeResponse(
+    buildDeveloperIdentityReply(langPref),
+    {
+      actionCard: "developer_identity",
+      matchType: "fixed"
+    }
+  );
+}
+
 
     return finalizeResponse(reply, { actionCard: "developer_identity", matchType: "fixed" });
   }
