@@ -642,14 +642,15 @@ function buildCollaborationReply() {
 function buildDeveloperIdentityReply(language = "ar") {
   // العربية هي الافتراضية دائمًا
   if (language !== "en") {
-    return `✨ أحيانًا من المهم أن تعرف من يقف خلف الأداة التي تستخدمها،<br>
+    return `✨ أحيانًا من المهم أن تعرف من يقف خلف الأداة التي تستخدمها،
 لا بدافع الفضول، بل لبناء الثقة.`;
   }
 
   // الإنجليزية فقط إذا فُرضت صراحة
-  return `✨ Sometimes, knowing who stands behind the tool matters —<br>
+  return `✨ Sometimes, knowing who stands behind the tool matters —
 not out of curiosity, but to build trust.`;
 }
+
 function buildNovaLinkInfoReply() {
   return NOVABOT_TEXT_PACKAGE.aboutNovaLink;
 }
