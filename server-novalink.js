@@ -425,6 +425,8 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
 
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
+      console.log("🔍 [INTENT RAW OUTPUT]", analysis);
+
       // ---- Update Session Context (Intent / Topics) ----
 const sessionKey = getSessionKey(req);
 
