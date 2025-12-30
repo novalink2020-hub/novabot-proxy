@@ -14,6 +14,9 @@ import crypto from "crypto";
 // AI modules
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
+// Business Profile (Read-Only)
+import NovaLinkBusinessProfile from "./businessProfiles/novalink.profile.js";
+
 
 // -------------------------------------------
 // Load Knowledge V5 on boot (SAFE / OPTIONAL)
@@ -226,6 +229,11 @@ async function verifyTurnstileToken(token, ip = "") {
 // ============================================================
 const PORT = process.env.PORT || 10000;
 // ============================================================
+// Active Business Profile (Read-Only)
+// ============================================================
+const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
+
+// ============================================================
 // Session Context Store (In-Memory) – Step 4A.1
 // ============================================================
 // key: session_id (X-NOVABOT-SESSION or fallback)
@@ -431,6 +439,7 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
 const sessionKey = getSessionKey(req);
 
 updateSessionContext(sessionKey, {
+  business_profile_id: ACTIVE_BUSINESS_PROFILE.profile_id,
   language: lang,
   last_user_message: msg,
   last_intent: analysis?.intent || "غير_معروف",
@@ -440,9 +449,11 @@ updateSessionContext(sessionKey, {
 
 console.log("🧠 [SESSION CONTEXT UPDATED]", {
   session: sessionKey,
+  business: ACTIVE_BUSINESS_PROFILE.profile_id,
   intent: analysis?.intent,
   topics: analysis?.topics
 });
+
 
       const brainReply = await novaBrainSystem({ message: msg, ...analysis });
 
