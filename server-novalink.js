@@ -479,35 +479,46 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
       console.log("🔍 [INTENT RAW OUTPUT]", analysis);
-      // ============================================================
-// Step 4A.4 – Map Intent → Business Signals
+// ============================================================
+// Step 4A.4 – Map Intent → Business Signals (Schema-flexible)
 // ============================================================
 const rawIntentId = analysis?.intentId || null;
 
-const businessMap =
-  ACTIVE_BUSINESS_PROFILE?.intent_sales_map || {};
+// Support both schemas:
+// A) intent_sales_map + defaults  (new profile style)
+// B) intentMap + fallback         (old/simple profile style)
+const mapA = ACTIVE_BUSINESS_PROFILE?.intent_sales_map || null;
+const defA = ACTIVE_BUSINESS_PROFILE?.defaults || null;
 
-const fallback =
-  ACTIVE_BUSINESS_PROFILE?.defaults || {};
+const mapB = ACTIVE_BUSINESS_PROFILE?.intentMap || null;
+const defB = ACTIVE_BUSINESS_PROFILE?.fallback || null;
 
-const mapped =
-  (rawIntentId && businessMap[rawIntentId]) || fallback;
+// Resolve business id (support both)
+const businessId =
+  ACTIVE_BUSINESS_PROFILE?.profile_id ||
+  ACTIVE_BUSINESS_PROFILE?.meta?.business_id ||
+  null;
 
+// Pick mapping row + fallback
+const mappedRow =
+  (mapA && rawIntentId && mapA[rawIntentId]) ? mapA[rawIntentId] :
+  (mapB && rawIntentId && mapB[rawIntentId]) ? mapB[rawIntentId] :
+  (defA || defB || {});
+
+// Normalize fields to a single output (Arabic)
 const businessContext = {
-  business_id: ACTIVE_BUSINESS_PROFILE?.profile_id || null,
-  intent_ar: mapped.intent_ar || fallback.intent_ar,
-  lead_stage_ar: mapped.lead_stage_ar || fallback.lead_stage_ar,
-  lead_temperature_ar:
-    mapped.lead_temperature_ar || fallback.lead_temperature_ar,
-  interest_type_ar:
-    mapped.interest_type_ar || fallback.interest_type_ar,
-  mapped_interest_id:
-    mapped.mapped_interest_id || fallback.mapped_interest_id,
-  suggested_card:
-    mapped.suggested_card || null,
+  business_id: businessId,
+
+  intent_ar: mappedRow.intent_ar || mappedRow.intent || "غير_محدد",
+  lead_stage_ar: mappedRow.lead_stage_ar || mappedRow.stage || "غير_واضح",
+  lead_temperature_ar: mappedRow.lead_temperature_ar || mappedRow.temperature || "بارد",
+  interest_type_ar: mappedRow.interest_type_ar || mappedRow.interest_type || null,
+
+  mapped_interest_id: mappedRow.mapped_interest_id || mappedRow.interest || null,
+  suggested_card: mappedRow.suggested_card || mappedRow.card || analysis?.suggestedCard || null,
+
   raw_intent_id: rawIntentId
 };
-
 
       // ---- Update Session Context (Intent / Topics) ----
 const sessionKey = getSessionKey(req);
