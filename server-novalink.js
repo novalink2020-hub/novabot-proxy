@@ -14,8 +14,6 @@ import crypto from "crypto";
 // AI modules
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
-// Business Profile (Read-Only)
-import NovaLinkBusinessProfile from "./businessProfiles/novalink.profile.js";
 
 // ============================================================
 // Active Business Profile
