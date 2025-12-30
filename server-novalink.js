@@ -17,6 +17,12 @@ import { novaBrainSystem } from "./novaBrainSystem.js";
 // Business Profile (Read-Only)
 import NovaLinkBusinessProfile from "./businessProfiles/novalink.profile.js";
 
+// ============================================================
+// Active Business Profile
+// ============================================================
+import NovaLinkBusinessProfile from "./businessProfiles/novalink.profile.js";
+
+const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
 
 // -------------------------------------------
 // Load Knowledge V5 on boot (SAFE / OPTIONAL)
