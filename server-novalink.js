@@ -479,24 +479,65 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
       console.log("🔍 [INTENT RAW OUTPUT]", analysis);
+      // ============================================================
+// Step 4A.4 – Map Intent → Business Signals
+// ============================================================
+const rawIntentId = analysis?.intentId || null;
+
+const businessMap =
+  ACTIVE_BUSINESS_PROFILE?.intent_sales_map || {};
+
+const fallback =
+  ACTIVE_BUSINESS_PROFILE?.defaults || {};
+
+const mapped =
+  (rawIntentId && businessMap[rawIntentId]) || fallback;
+
+const businessContext = {
+  business_id: ACTIVE_BUSINESS_PROFILE?.profile_id || null,
+  intent_ar: mapped.intent_ar || fallback.intent_ar,
+  lead_stage_ar: mapped.lead_stage_ar || fallback.lead_stage_ar,
+  lead_temperature_ar:
+    mapped.lead_temperature_ar || fallback.lead_temperature_ar,
+  interest_type_ar:
+    mapped.interest_type_ar || fallback.interest_type_ar,
+  mapped_interest_id:
+    mapped.mapped_interest_id || fallback.mapped_interest_id,
+  suggested_card:
+    mapped.suggested_card || null,
+  raw_intent_id: rawIntentId
+};
+
 
       // ---- Update Session Context (Intent / Topics) ----
 const sessionKey = getSessionKey(req);
 
 updateSessionContext(sessionKey, {
-  business_profile_id: ACTIVE_BUSINESS_PROFILE.profile_id,
   language: lang,
   last_user_message: msg,
-  last_intent: analysis?.intent || "غير_معروف",
-  topics: analysis?.topics || [],
+
+  // Business Signals (Step 4A.4)
+  business: businessContext.business_id,
+  intent: businessContext.intent_ar,
+  lead_stage: businessContext.lead_stage_ar,
+  lead_temperature: businessContext.lead_temperature_ar,
+  interest_type: businessContext.interest_type_ar,
+  mapped_interest: businessContext.mapped_interest_id,
+  suggested_card: businessContext.suggested_card,
+  raw_intent_id: businessContext.raw_intent_id,
+
+  // Confidence
   confidence: analysis?.confidence || null
 });
 
+
 console.log("🧠 [SESSION CONTEXT UPDATED]", {
   session: sessionKey,
-  business: ACTIVE_BUSINESS_PROFILE.profile_id,
-  intent: analysis?.intent,
-  topics: analysis?.topics
+  business: businessContext.business_id,
+  intent: businessContext.intent_ar,
+  stage: businessContext.lead_stage_ar,
+  temperature: businessContext.lead_temperature_ar,
+  interest: businessContext.mapped_interest_id
 });
 
 
