@@ -266,6 +266,41 @@ function getSessionContext(sessionKey) {
 const server = http.createServer(async (req, res) => {
   const origin = getRequestOrigin(req);
 
+  // ============================================================
+// Lead Enrichment Helper (Step 4A.4)
+// ============================================================
+function enrichLeadEvent(rawLead, sessionContext, businessProfile) {
+  if (!sessionContext || !businessProfile) {
+    return rawLead;
+  }
+
+  const intentId = sessionContext.last_intent;
+  const intentMap = businessProfile.intent_sales_map || {};
+  const fallback = businessProfile.defaults || {};
+
+  const mapped = intentMap[intentId] || fallback;
+
+  return {
+    ...rawLead,
+
+    business: businessProfile.profile_id,
+
+    sales_context: {
+      interest: mapped.interest_type_ar || null,
+      stage: mapped.lead_stage_ar || null,
+      temperature: mapped.lead_temperature_ar || null,
+      intent: mapped.intent_ar || intentId || null
+    },
+
+    conversation_context: {
+      last_message: sessionContext.last_user_message || null,
+      confidence: sessionContext.confidence || null,
+      topics: sessionContext.topics || []
+    }
+  };
+}
+
+
   // ---------- Layer 1 ----------
   if (origin) {
     if (!isOriginAllowed(origin)) {
@@ -298,17 +333,27 @@ const server = http.createServer(async (req, res) => {
         const data = JSON.parse(body || "{}");
 
         // Log منظم — جاهز للداشبورد / Sheets لاحقًا
-        console.log("📥 [LEAD EVENT]", {
-          event_type: data.event_type,
-          action: data.action,
-          card_id: data.card_id,
-          email: data?.contact?.email || "",
-          page: data?.user_context?.page_url || "",
-          device: data?.user_context?.device || "",
-          lang: data?.user_context?.language || "",
-          session_id: data?.conversation_context?.session_id || "",
-          ts: data?.meta?.timestamp || Date.now()
-        });
+const sessionKey =
+  data?.conversation_context?.session_id ||
+  getSessionKey(req);
+
+const sessionContext = getSessionContext(sessionKey);
+
+const enrichedLead = enrichLeadEvent(
+  {
+    event_type: data.event_type,
+    action: data.action,
+    card_id: data.card_id,
+    contact: data.contact || {},
+    user_context: data.user_context || {},
+    meta: data.meta || {}
+  },
+  sessionContext,
+  ACTIVE_BUSINESS_PROFILE
+);
+
+console.log("📥 [LEAD EVENT ENRICHED]", enrichedLead);
+
       } catch (e) {
         console.warn("⚠️ Lead event parse error");
       }
