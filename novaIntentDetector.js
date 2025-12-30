@@ -746,16 +746,8 @@ const HARD_OUT_OF_SCOPE_KEYWORDS = [
 export async function detectNovaIntent(userMessage = "") {
   const original = (userMessage || "").trim();
   if (!original) {
-    return {
-      intentId: "casual",
-      confidence: 0,
-      language: "ar",
-      dialectHint: "msa",
-      toneHint: "neutral",
-      suggestedCard: null,
-      aiScore: 0,
-      bizScore: 0
-    };
+return { intentId: "casual", intent: "casual", confidence: 0, language: "ar", dialectHint: "msa", toneHint: "neutral", suggestedCard: null, aiScore: 0, bizScore: 0 };
+
   }
 
   const language = detectLanguage(original);
@@ -776,11 +768,7 @@ export async function detectNovaIntent(userMessage = "") {
   const novalinkScore = scoreByKeywords(clean, NOVALINK_INFO_KEYWORDS);
   const hardOutScope = scoreByKeywords(clean, HARD_OUT_OF_SCOPE_KEYWORDS);
 
-  const buildResult = (payload) => ({
-    ...payload,
-    aiScore,
-    bizScore
-  });
+const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || null, aiScore, bizScore });
 
   // =========================
   // 2) كشف "خارج النطاق" بقوة
