@@ -1,10 +1,10 @@
 /**************************************************************
- * NovaLink Business Profile
- * ------------------------------------------------------------
- * يعرّف:
- * - اهتمامات NovaLink التجارية
- * - كيف تُترجم نوايا المستخدم إلى إشارات بيع
- * - بدون أي اعتماد على السيرفر أو الدماغ
+ * NovaLink Business Profile (NovaBot)
+ * File: /businessProfiles/novalink.profile.js
+ *
+ * Purpose:
+ * - فصل منطق البيع/الاهتمامات/تطبيع النوايا خارج السيرفر
+ * - جاهز للتوسع Multi-tenant لاحقًا
  **************************************************************/
 
 export const NovaLinkBusinessProfile = {
@@ -16,8 +16,7 @@ export const NovaLinkBusinessProfile = {
   },
 
   /**
-   * الاهتمامات التجارية الأساسية
-   * هذه أعمدة الداشبورد لاحقًا
+   * أعمدة الداشبورد (Core Interests)
    */
   interests: {
     knowledge_subscription: {
@@ -50,81 +49,139 @@ export const NovaLinkBusinessProfile = {
   },
 
   /**
-   * بطاقات الواجهة (UI Actions)
-   * تحدد ما نطلبه من المستخدم
+   * UI Actions (Cards) + حقول الاتصال المطلوبة
    */
   ui_actions: {
-    subscribe: {
-      required: ["email"],
-      optional: ["name"]
-    },
-
-    bot_lead: {
-      required: ["email_or_phone"],
-      optional: ["name", "company"]
-    },
-
-    business_subscribe: {
-      required: ["email"],
-      optional: ["name", "company", "role"]
-    },
-
-    collaboration: {
-      required: ["email_or_phone"],
-      optional: ["name", "company"]
-    }
+    subscribe: { required: ["email"], optional: ["name"] },
+    bot_lead: { required: ["email_or_phone"], optional: ["name", "company"] },
+    business_subscribe: { required: ["email"], optional: ["name", "company", "role"] },
+    collaboration: { required: ["email_or_phone"], optional: ["name", "company"] }
   },
 
   /**
-   * تحويل intent التقني → معنى تجاري
-   * (أهم جزء في الملف)
+   * IntentId → Sales Fields
+   * لازم تطابق novaIntentDetector.js حرفيًا
    */
-  intent_map: {
-    consulting_purchase: {
-      interest: "ai_service",
-      stage: "قرار",
-      temperature: "ساخن",
-      suggested_card: "bot_lead"
+  intent_sales_map: {
+    // detector: greeting
+    greeting: {
+      intent: "ترحيب",
+      interest: "knowledge_subscription",
+      stage: "اهتمام",
+      temperature: "بارد",
+      suggested_card: null
     },
 
+    // detector: ai_business
     ai_business: {
+      intent: "اهتمام_ذكاء_اصطناعي_للأعمال",
       interest: "business_subscription",
       stage: "بحث",
       temperature: "دافئ",
       suggested_card: null
     },
 
-    subscribe_general: {
+    // detector: subscribe_interest
+    subscribe_interest: {
+      intent: "اهتمام_بالاشتراك",
       interest: "knowledge_subscription",
       stage: "اهتمام",
       temperature: "دافئ",
       suggested_card: "subscribe"
     },
 
-    collaboration_interest: {
+    // detector: consulting_purchase
+    consulting_purchase: {
+      intent: "طلب_استشارة",
+      interest: "ai_service",
+      stage: "قرار",
+      temperature: "ساخن",
+      suggested_card: "bot_lead"
+    },
+
+    // detector: collaboration
+    collaboration: {
+      intent: "تعاون_وشراكة",
       interest: "partnership",
       stage: "استكشاف",
       temperature: "دافئ",
       suggested_card: "collaboration"
     },
 
+    // detector: novalink_info
+    novalink_info: {
+      intent: "تعريف_نوفا_لينك",
+      interest: "knowledge_subscription",
+      stage: "اهتمام",
+      temperature: "دافئ",
+      suggested_card: null
+    },
+
+    // detector: thanks_positive
+    thanks_positive: {
+      intent: "ايجابية",
+      interest: "knowledge_subscription",
+      stage: "اهتمام",
+      temperature: "دافئ",
+      suggested_card: "subscribe"
+    },
+
+    // detector: negative_mood
+    negative_mood: {
+      intent: "مزاج_سلبي",
+      interest: "knowledge_subscription",
+      stage: "غير_واضح",
+      temperature: "بارد",
+      suggested_card: null
+    },
+
+    // detector: out_of_scope
     out_of_scope: {
+      intent: "خارج_النطاق",
       interest: null,
       stage: "غير_مهتم",
+      temperature: "بارد",
+      suggested_card: null
+    },
+
+    // detector: casual (عند رسالة فاضية/غير واضحة)
+    casual: {
+      intent: "عابر",
+      interest: "knowledge_subscription",
+      stage: "غير_واضح",
       temperature: "بارد",
       suggested_card: null
     }
   },
 
-  /**
-   * القيم الافتراضية
-   */
-  fallback: {
+  defaults: {
+    intent: "غير_محدد",
     interest: "knowledge_subscription",
     stage: "غير_واضح",
     temperature: "بارد",
     suggested_card: null
   }
 };
+
+/**
+ * Helper: يطبع Sales Fields من analysis.intentId
+ */
+export function normalizeIntentForSales(profile, analysis) {
+  const intentId = analysis?.intentId || analysis?.intent || null;
+  const map = profile?.intent_sales_map || {};
+  const fallback = profile?.defaults || {};
+
+  const row = intentId && map[intentId] ? map[intentId] : null;
+
+  return {
+    business_id: profile?.meta?.business_id || null,
+    raw_intent_id: intentId,
+    intent: row?.intent ?? fallback.intent,
+    interest: row?.interest ?? fallback.interest,
+    stage: row?.stage ?? fallback.stage,
+    temperature: row?.temperature ?? fallback.temperature,
+    suggested_card: row?.suggested_card ?? fallback.suggested_card
+  };
+}
 
 export default NovaLinkBusinessProfile;
