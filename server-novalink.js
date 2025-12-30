@@ -232,10 +232,6 @@ async function verifyTurnstileToken(token, ip = "") {
 // Server
 // ============================================================
 const PORT = process.env.PORT || 10000;
-// ============================================================
-// Active Business Profile (Read-Only)
-// ============================================================
-const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
 
 // ============================================================
 // Session Context Store (In-Memory) – Step 4A.1
