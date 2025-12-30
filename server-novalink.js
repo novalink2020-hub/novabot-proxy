@@ -250,6 +250,40 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204);
     return res.end();
   }
+    // ---------- Lead Event (UI) ----------
+  if (req.method === "POST" && req.url === "/lead-event") {
+    let body = "";
+
+    req.on("data", (chunk) => (body += chunk));
+
+    req.on("end", () => {
+      try {
+        const data = JSON.parse(body || "{}");
+
+        // Log منظم — جاهز للداشبورد / Sheets لاحقًا
+        console.log("📥 [LEAD EVENT]", {
+          event_type: data.event_type,
+          action: data.action,
+          card_id: data.card_id,
+          email: data?.contact?.email || "",
+          page: data?.user_context?.page_url || "",
+          device: data?.user_context?.device || "",
+          lang: data?.user_context?.language || "",
+          session_id: data?.conversation_context?.session_id || "",
+          ts: data?.meta?.timestamp || Date.now()
+        });
+      } catch (e) {
+        console.warn("⚠️ Lead event parse error");
+      }
+
+      // نعيد OK دائمًا — لا نكسر الواجهة
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: true }));
+    });
+
+    return;
+  }
+
 
   // ---------- GET /session ----------
   if (req.method === "GET" && req.url?.startsWith("/session")) {
