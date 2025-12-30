@@ -225,6 +225,35 @@ async function verifyTurnstileToken(token, ip = "") {
 // Server
 // ============================================================
 const PORT = process.env.PORT || 10000;
+// ============================================================
+// Session Context Store (In-Memory) – Step 4A.1
+// ============================================================
+// key: session_id (X-NOVABOT-SESSION or fallback)
+// value: last known conversation context
+const sessionContextStore = new Map();
+
+function getSessionKey(req) {
+  return (
+    String(req.headers["x-novabot-session"] || "").trim() ||
+    "anonymous"
+  );
+}
+
+function updateSessionContext(sessionKey, patch = {}) {
+  const prev = sessionContextStore.get(sessionKey) || {};
+  const next = {
+    ...prev,
+    ...patch,
+    updated_at: Date.now()
+  };
+  sessionContextStore.set(sessionKey, next);
+  return next;
+}
+
+function getSessionContext(sessionKey) {
+  return sessionContextStore.get(sessionKey) || null;
+}
+
 
 const server = http.createServer(async (req, res) => {
   const origin = getRequestOrigin(req);
@@ -319,6 +348,18 @@ const server = http.createServer(async (req, res) => {
 
     return;
   }
+// ---------- Debug: Session Context ----------
+if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
+  const key = getSessionKey(req);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  return res.end(
+    JSON.stringify({
+      ok: true,
+      session: key,
+      context: getSessionContext(key)
+    })
+  );
+}
 
   
   // ---------- Health ----------
@@ -384,6 +425,23 @@ const server = http.createServer(async (req, res) => {
 
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
+      // ---- Update Session Context (Intent / Topics) ----
+const sessionKey = getSessionKey(req);
+
+updateSessionContext(sessionKey, {
+  language: lang,
+  last_user_message: msg,
+  last_intent: analysis?.intent || "غير_معروف",
+  topics: analysis?.topics || [],
+  confidence: analysis?.confidence || null
+});
+
+console.log("🧠 [SESSION CONTEXT UPDATED]", {
+  session: sessionKey,
+  intent: analysis?.intent,
+  topics: analysis?.topics
+});
+
       const brainReply = await novaBrainSystem({ message: msg, ...analysis });
 
       res.writeHead(200, { "Content-Type": "application/json" });
