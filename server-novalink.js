@@ -257,7 +257,36 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ ok: true, token, ttl_ms: SESSION_TTL_MS }));
   }
+  // ---------- Telemetry (Frontend Loader) ----------
+  if (req.method === "POST" && req.url === "/telemetry") {
+    let body = "";
 
+    req.on("data", (chunk) => (body += chunk));
+
+    req.on("end", () => {
+      try {
+        const data = JSON.parse(body || "{}");
+
+        console.log("📡 [TELEMETRY]", {
+          source: data.source || "unknown",
+          stage: data.stage,
+          status: data.status,
+          ts: data.ts,
+          extra: data.extra || null
+        });
+      } catch (e) {
+        console.warn("⚠️ Telemetry parse error");
+      }
+
+      // نعيد 200 دائمًا — لا نكسر الواجهة أبدًا
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: true }));
+    });
+
+    return;
+  }
+
+  
   // ---------- Health ----------
   if (req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
