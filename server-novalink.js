@@ -353,6 +353,31 @@ const enrichedLead = enrichLeadEvent(
 );
 
 console.log("📥 [LEAD EVENT ENRICHED]", enrichedLead);
+        // ===========================================
+// Send Lead to Google Sheets (Step 5.2.3)
+// ===========================================
+fetch("https://script.google.com/macros/s/AKfycbyTLOxhMVxSMI1oN1bisv9JUIVMTu9R5OLYj3UQU88VGWZ0ANkKyX8B_eQ7ovQ83rp6/exec", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    التاريخ: new Date().toISOString(),
+    "البريد الإلكتروني": enrichedLead?.contact?.email || "",
+    الصفحة: enrichedLead?.user_context?.page_url || "",
+
+    النية: enrichedLead?.sales_context?.intent || "",
+    "مرحلة الشراء": enrichedLead?.sales_context?.stage || "",
+    "حرارة الليد": enrichedLead?.sales_context?.temperature || "",
+    "نوع الاهتمام": enrichedLead?.sales_context?.interest || "",
+
+    "النشاط التجاري": enrichedLead?.business || "",
+    "آخر رسالة للعميل": enrichedLead?.conversation_context?.last_message || ""
+  })
+}).catch(err => {
+  console.warn("⚠️ Failed to send lead to Google Sheets", err?.message);
+});
+
 
       } catch (e) {
         console.warn("⚠️ Lead event parse error");
