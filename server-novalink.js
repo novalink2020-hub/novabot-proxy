@@ -356,7 +356,7 @@ console.log("📥 [LEAD EVENT ENRICHED]", enrichedLead);
         // ===========================================
 // Send Lead to Google Sheets (Step 5.2.3)
 // ===========================================
-fetch("https://script.google.com/macros/s/AKfycbyTLOxhMVxSMI1oN1bisv9JUIVMTu9R5OLYj3UQU88VGWZ0ANkKyX8B_eQ7ovQ83rp6/exec", {
+fetch("https://script.google.com/macros/s/AKfycbw7TwUe4KTxk0ps7YTrM_e8Ar7zAlz3nH2nU0jNgNCCHFG7nAZ5WFO6x7GhW6TZJO4d/exec", {
   method: "POST",
   headers: {
     "Content-Type": "application/json"
