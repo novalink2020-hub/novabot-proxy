@@ -353,6 +353,30 @@ const enrichedLead = enrichLeadEvent(
 );
 
 console.log("📥 [LEAD EVENT ENRICHED]", enrichedLead);
+        // ---- Send Lead to Google Sheets (Async, Safe) ----
+fetch(GOOGLE_SHEETS_WEBHOOK, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    session_id: sessionKey,
+    timestamp: enrichedLead?.meta?.timestamp || Date.now(),
+    email: enrichedLead?.contact?.email || "",
+    page_url: enrichedLead?.user_context?.page_url || "",
+
+    intent: enrichedLead?.sales_context?.intent || "",
+    stage: enrichedLead?.sales_context?.stage || "",
+    temperature: enrichedLead?.sales_context?.temperature || "",
+    interest: enrichedLead?.sales_context?.interest || "",
+
+    business: enrichedLead?.business || "",
+    last_message: enrichedLead?.conversation_context?.last_message || ""
+  })
+}).catch(() => {
+  console.warn("⚠️ Failed to send lead to Google Sheets");
+});
+
         // ===========================================
 // Send Lead to Google Sheets (Step 5.2.3)
 // ===========================================
