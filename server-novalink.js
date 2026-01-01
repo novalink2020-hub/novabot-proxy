@@ -14,13 +14,9 @@ import crypto from "crypto";
 // AI modules
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
-
-// ============================================================
-// Active Business Profile
-// ============================================================
+// Business Profile (Read-Only)
 import NovaLinkBusinessProfile from "./businessProfiles/novalink.profile.js";
 
-const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
 
 // -------------------------------------------
 // Load Knowledge V5 on boot (SAFE / OPTIONAL)
@@ -232,6 +228,10 @@ async function verifyTurnstileToken(token, ip = "") {
 // Server
 // ============================================================
 const PORT = process.env.PORT || 10000;
+// ============================================================
+// Active Business Profile (Read-Only)
+// ============================================================
+const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
 
 // ============================================================
 // Session Context Store (In-Memory) – Step 4A.1
@@ -266,41 +266,6 @@ function getSessionContext(sessionKey) {
 const server = http.createServer(async (req, res) => {
   const origin = getRequestOrigin(req);
 
-  // ============================================================
-// Lead Enrichment Helper (Step 4A.4)
-// ============================================================
-function enrichLeadEvent(rawLead, sessionContext, businessProfile) {
-  if (!sessionContext || !businessProfile) {
-    return rawLead;
-  }
-
-  const intentId = sessionContext.last_intent;
-  const intentMap = businessProfile.intent_sales_map || {};
-  const fallback = businessProfile.defaults || {};
-
-  const mapped = intentMap[intentId] || fallback;
-
-  return {
-    ...rawLead,
-
-    business: businessProfile.profile_id,
-
-    sales_context: {
-      interest: mapped.interest_type_ar || null,
-      stage: mapped.lead_stage_ar || null,
-      temperature: mapped.lead_temperature_ar || null,
-      intent: mapped.intent_ar || intentId || null
-    },
-
-    conversation_context: {
-      last_message: sessionContext.last_user_message || null,
-      confidence: sessionContext.confidence || null,
-      topics: sessionContext.topics || []
-    }
-  };
-}
-
-
   // ---------- Layer 1 ----------
   if (origin) {
     if (!isOriginAllowed(origin)) {
@@ -333,76 +298,17 @@ function enrichLeadEvent(rawLead, sessionContext, businessProfile) {
         const data = JSON.parse(body || "{}");
 
         // Log منظم — جاهز للداشبورد / Sheets لاحقًا
-const sessionKey =
-  data?.conversation_context?.session_id ||
-  getSessionKey(req);
-
-const sessionContext = getSessionContext(sessionKey);
-
-const enrichedLead = enrichLeadEvent(
-  {
-    event_type: data.event_type,
-    action: data.action,
-    card_id: data.card_id,
-    contact: data.contact || {},
-    user_context: data.user_context || {},
-    meta: data.meta || {}
-  },
-  sessionContext,
-  ACTIVE_BUSINESS_PROFILE
-);
-
-console.log("📥 [LEAD EVENT ENRICHED]", enrichedLead);
-        // ---- Send Lead to Google Sheets (Async, Safe) ----
-fetch(GOOGLE_SHEETS_WEBHOOK, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    session_id: sessionKey,
-    timestamp: enrichedLead?.meta?.timestamp || Date.now(),
-    email: enrichedLead?.contact?.email || "",
-    page_url: enrichedLead?.user_context?.page_url || "",
-
-    intent: enrichedLead?.sales_context?.intent || "",
-    stage: enrichedLead?.sales_context?.stage || "",
-    temperature: enrichedLead?.sales_context?.temperature || "",
-    interest: enrichedLead?.sales_context?.interest || "",
-
-    business: enrichedLead?.business || "",
-    last_message: enrichedLead?.conversation_context?.last_message || ""
-  })
-}).catch(() => {
-  console.warn("⚠️ Failed to send lead to Google Sheets");
-});
-
-        // ===========================================
-// Send Lead to Google Sheets (Step 5.2.3)
-// ===========================================
-fetch("https://script.google.com/macros/s/AKfycbw7TwUe4KTxk0ps7YTrM_e8Ar7zAlz3nH2nU0jNgNCCHFG7nAZ5WFO6x7GhW6TZJO4d/exec", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    التاريخ: new Date().toISOString(),
-    "البريد الإلكتروني": enrichedLead?.contact?.email || "",
-    الصفحة: enrichedLead?.user_context?.page_url || "",
-
-    النية: enrichedLead?.sales_context?.intent || "",
-    "مرحلة الشراء": enrichedLead?.sales_context?.stage || "",
-    "حرارة الليد": enrichedLead?.sales_context?.temperature || "",
-    "نوع الاهتمام": enrichedLead?.sales_context?.interest || "",
-
-    "النشاط التجاري": enrichedLead?.business || "",
-    "آخر رسالة للعميل": enrichedLead?.conversation_context?.last_message || ""
-  })
-}).catch(err => {
-  console.warn("⚠️ Failed to send lead to Google Sheets", err?.message);
-});
-
-
+        console.log("📥 [LEAD EVENT]", {
+          event_type: data.event_type,
+          action: data.action,
+          card_id: data.card_id,
+          email: data?.contact?.email || "",
+          page: data?.user_context?.page_url || "",
+          device: data?.user_context?.device || "",
+          lang: data?.user_context?.language || "",
+          session_id: data?.conversation_context?.session_id || "",
+          ts: data?.meta?.timestamp || Date.now()
+        });
       } catch (e) {
         console.warn("⚠️ Lead event parse error");
       }
@@ -528,76 +434,24 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
       console.log("🔍 [INTENT RAW OUTPUT]", analysis);
-// ============================================================
-// Step 4A.4 – Map Intent → Business Signals (Schema-flexible)
-// ============================================================
-const rawIntentId = analysis?.intentId || null;
-
-// Support both schemas:
-// A) intent_sales_map + defaults  (new profile style)
-// B) intentMap + fallback         (old/simple profile style)
-const mapA = ACTIVE_BUSINESS_PROFILE?.intent_sales_map || null;
-const defA = ACTIVE_BUSINESS_PROFILE?.defaults || null;
-
-const mapB = ACTIVE_BUSINESS_PROFILE?.intentMap || null;
-const defB = ACTIVE_BUSINESS_PROFILE?.fallback || null;
-
-// Resolve business id (support both)
-const businessId =
-  ACTIVE_BUSINESS_PROFILE?.profile_id ||
-  ACTIVE_BUSINESS_PROFILE?.meta?.business_id ||
-  null;
-
-// Pick mapping row + fallback
-const mappedRow =
-  (mapA && rawIntentId && mapA[rawIntentId]) ? mapA[rawIntentId] :
-  (mapB && rawIntentId && mapB[rawIntentId]) ? mapB[rawIntentId] :
-  (defA || defB || {});
-
-// Normalize fields to a single output (Arabic)
-const businessContext = {
-  business_id: businessId,
-
-  intent_ar: mappedRow.intent_ar || mappedRow.intent || "غير_محدد",
-  lead_stage_ar: mappedRow.lead_stage_ar || mappedRow.stage || "غير_واضح",
-  lead_temperature_ar: mappedRow.lead_temperature_ar || mappedRow.temperature || "بارد",
-  interest_type_ar: mappedRow.interest_type_ar || mappedRow.interest_type || null,
-
-  mapped_interest_id: mappedRow.mapped_interest_id || mappedRow.interest || null,
-  suggested_card: mappedRow.suggested_card || mappedRow.card || analysis?.suggestedCard || null,
-
-  raw_intent_id: rawIntentId
-};
 
       // ---- Update Session Context (Intent / Topics) ----
 const sessionKey = getSessionKey(req);
 
 updateSessionContext(sessionKey, {
+  business_profile_id: ACTIVE_BUSINESS_PROFILE.profile_id,
   language: lang,
   last_user_message: msg,
-
-  // Business Signals (Step 4A.4)
-  business: businessContext.business_id,
-  intent: businessContext.intent_ar,
-  lead_stage: businessContext.lead_stage_ar,
-  lead_temperature: businessContext.lead_temperature_ar,
-  interest_type: businessContext.interest_type_ar,
-  mapped_interest: businessContext.mapped_interest_id,
-  suggested_card: businessContext.suggested_card,
-  raw_intent_id: businessContext.raw_intent_id,
-
-  // Confidence
+  last_intent: analysis?.intent || "غير_معروف",
+  topics: analysis?.topics || [],
   confidence: analysis?.confidence || null
 });
 
-
 console.log("🧠 [SESSION CONTEXT UPDATED]", {
   session: sessionKey,
-  business: businessContext.business_id,
-  intent: businessContext.intent_ar,
-  stage: businessContext.lead_stage_ar,
-  temperature: businessContext.lead_temperature_ar,
-  interest: businessContext.mapped_interest_id
+  business: ACTIVE_BUSINESS_PROFILE.profile_id,
+  intent: analysis?.intent,
+  topics: analysis?.topics
 });
 
 
