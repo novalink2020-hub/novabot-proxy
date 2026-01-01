@@ -313,18 +313,43 @@ const server = http.createServer(async (req, res) => {
       try {
         const data = JSON.parse(body || "{}");
 
-        // Log منظم — جاهز للداشبورد / Sheets لاحقًا
-        console.log("📥 [LEAD EVENT]", {
-          event_type: data.event_type,
-          action: data.action,
-          card_id: data.card_id,
-          email: data?.contact?.email || "",
-          page: data?.user_context?.page_url || "",
-          device: data?.user_context?.device || "",
-          lang: data?.user_context?.language || "",
-          session_id: data?.conversation_context?.session_id || "",
-          ts: data?.meta?.timestamp || Date.now()
-        });
+// ===============================
+// Step 5.1 — Bind Lead to Session
+// ===============================
+
+// 1) Session ID الداخلي (S-1, S-2...)
+const sessionKey = getSessionKey(req);
+
+// 2) آخر Session Context محفوظ
+const sessionContext = getSessionContext(sessionKey) || {};
+
+// 3) دمج بيانات الـ Lead مع السياق
+const leadWithContext = {
+  session_id: sessionKey,
+
+  event_type: data.event_type,
+  action: data.action,
+  card_id: data.card_id,
+
+  email: data?.contact?.email || "",
+  page: data?.user_context?.page_url || "",
+  device: data?.user_context?.device || "",
+  language: data?.user_context?.language || "ar",
+
+  // من Session Context (عربي بالكامل)
+  intent: sessionContext.intent || "غير_محدد",
+  stage: sessionContext.stage || "غير_واضح",
+  temperature: sessionContext.temperature || "بارد",
+  interest: sessionContext.interest || null,
+  business: sessionContext.business || null,
+  last_message: sessionContext.last_user_message || null,
+
+  timestamp: data?.meta?.timestamp || Date.now()
+};
+
+// 4) Log موحّد — هذا هو الأساس للـ Google Sheets لاحقًا
+console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
+
       } catch (e) {
         console.warn("⚠️ Lead event parse error");
       }
