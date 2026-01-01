@@ -321,7 +321,23 @@ const server = http.createServer(async (req, res) => {
 const sessionKey = getSessionKey(req);
 
 // 2) آخر Session Context محفوظ
-const sessionContext = getSessionContext(sessionKey) || {};
+// 2) تحديث Session Context ببيانات التواصل (Step 5.1.5)
+const contactPatch = {};
+
+if (data?.contact?.email) {
+  contactPatch.contact_email = data.contact.email;
+}
+
+if (data?.contact?.phone) {
+  contactPatch.contact_phone = data.contact.phone;
+}
+
+if (data?.card_id) {
+  contactPatch.last_action_card = data.card_id;
+}
+
+// نحدّث الجلسة فورًا
+const sessionContext = updateSessionContext(sessionKey, contactPatch) || {};
 
 // 3) دمج بيانات الـ Lead مع السياق
 const leadWithContext = {
