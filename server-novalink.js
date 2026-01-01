@@ -15,7 +15,7 @@ import crypto from "crypto";
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 // Business Profile (Read-Only)
-import NovaLinkBusinessProfile from "./businessProfiles/novalink.profile.js";
+import NovaLinkBusinessProfile, { normalizeIntentForSales } from "./businessProfiles/novalink.profile.js";
 
 
 // -------------------------------------------
@@ -239,6 +239,22 @@ const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
 // key: session_id (X-NOVABOT-SESSION or fallback)
 // value: last known conversation context
 const sessionContextStore = new Map();
+// ============================================================
+// Public Session Id (Short) – for dashboard / sheets later
+// ============================================================
+// maps internal sessionKey (token/anonymous) => short id like S-1, S-2 ...
+const sessionPublicIdStore = new Map();
+let sessionPublicCounter = 0;
+
+function getPublicSessionId(sessionKey) {
+  if (!sessionKey) return "S-0";
+  const existing = sessionPublicIdStore.get(sessionKey);
+  if (existing) return existing;
+  sessionPublicCounter += 1;
+  const shortId = `S-${sessionPublicCounter}`;
+  sessionPublicIdStore.set(sessionKey, shortId);
+  return shortId;
+}
 
 function getSessionKey(req) {
   return (
@@ -435,24 +451,49 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
       const analysis = await detectNovaIntent(msg);
       console.log("🔍 [INTENT RAW OUTPUT]", analysis);
 
-      // ---- Update Session Context (Intent / Topics) ----
-const sessionKey = getSessionKey(req);
+// ============================================================
+// Step 4A.4 — Map Intent → Business Signals (Arabic)
+// ============================================================
 
-updateSessionContext(sessionKey, {
-  business_profile_id: ACTIVE_BUSINESS_PROFILE.profile_id,
+const sessionKey = getSessionKey(req);
+const publicSessionId = getPublicSessionId(sessionKey);
+
+// Normalize sales fields using the official business profile map
+const sales = normalizeIntentForSales(ACTIVE_BUSINESS_PROFILE, analysis);
+
+// Build a clean “session context” snapshot (Arabic)
+const ctx = updateSessionContext(sessionKey, {
+  // IDs
+  session_id: publicSessionId,
+  business_id: sales.business_id,
+
+  // Message + language
   language: lang,
   last_user_message: msg,
-  last_intent: analysis?.intent || "غير_معروف",
-  topics: analysis?.topics || [],
+
+  // Raw + mapped intent
+  raw_intent_id: sales.raw_intent_id,
+  intent: sales.intent,                 // عربي
+  stage: sales.stage,                   // عربي
+  temperature: sales.temperature,       // عربي
+  interest: sales.interest,             // interest id (مثل knowledge_subscription)
+
+  // Optional helper
+  suggested_card: sales.suggested_card || null,
+
+  // Confidence
   confidence: analysis?.confidence || null
 });
 
 console.log("🧠 [SESSION CONTEXT UPDATED]", {
-  session: sessionKey,
-  business: ACTIVE_BUSINESS_PROFILE.profile_id,
-  intent: analysis?.intent,
-  topics: analysis?.topics
+  session: publicSessionId,
+  business: sales.business_id,
+  intent: sales.intent,
+  stage: sales.stage,
+  temperature: sales.temperature,
+  interest: sales.interest
 });
+
 
 
       const brainReply = await novaBrainSystem({ message: msg, ...analysis });
