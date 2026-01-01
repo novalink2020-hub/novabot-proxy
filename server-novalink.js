@@ -435,61 +435,23 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
       const analysis = await detectNovaIntent(msg);
       console.log("🔍 [INTENT RAW OUTPUT]", analysis);
 
-// ============================================================
-// Step 4A.4 – Map Intent → Business Signals (Arabic, Stable)
-// ============================================================
-
+      // ---- Update Session Context (Intent / Topics) ----
 const sessionKey = getSessionKey(req);
 
-// intent الخام
-const rawIntentId = analysis?.intentId || analysis?.intent || "غير_معروف";
-
-// خريطة التحويل من Business Profile
-const intentMap = ACTIVE_BUSINESS_PROFILE?.intent_sales_map || {};
-const defaults = ACTIVE_BUSINESS_PROFILE?.defaults || {};
-
-// صف التحويل
-const mapped =
-  (rawIntentId && intentMap[rawIntentId]) ? intentMap[rawIntentId] : defaults;
-
-// السياق التجاري الموحد
-const businessContext = {
-  business: ACTIVE_BUSINESS_PROFILE.profile_id,
-
-  intent: mapped.intent_ar || rawIntentId,
-  stage: mapped.lead_stage_ar || "غير_واضح",
-  temperature: mapped.lead_temperature_ar || "بارد",
-  interest: mapped.interest_type_ar || null,
-
-  raw_intent: rawIntentId
-};
-
-// تحديث الـ Session Context
 updateSessionContext(sessionKey, {
   business_profile_id: ACTIVE_BUSINESS_PROFILE.profile_id,
   language: lang,
   last_user_message: msg,
-
-  // Business Signals
-  intent: businessContext.intent,
-  stage: businessContext.stage,
-  temperature: businessContext.temperature,
-  interest: businessContext.interest,
-  raw_intent: businessContext.raw_intent,
-
-  // إضافي
+  last_intent: analysis?.intent || "غير_معروف",
   topics: analysis?.topics || [],
   confidence: analysis?.confidence || null
 });
 
-// لوج واضح (مهم جدًا الآن)
 console.log("🧠 [SESSION CONTEXT UPDATED]", {
   session: sessionKey,
-  business: businessContext.business,
-  intent: businessContext.intent,
-  stage: businessContext.stage,
-  temperature: businessContext.temperature,
-  interest: businessContext.interest
+  business: ACTIVE_BUSINESS_PROFILE.profile_id,
+  intent: analysis?.intent,
+  topics: analysis?.topics
 });
 
 
