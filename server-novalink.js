@@ -496,7 +496,10 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
 // Step 4A.4 — Map Intent → Business Signals (Arabic)
 // ============================================================
 
-const sessionKey = getSessionKey(req);
+const sessionKey =
+  getSessionKey(req) ||
+  data?.conversation_context?.session_id ||
+  "anonymous";
 const publicSessionId = getPublicSessionId(sessionKey);
 
 // Normalize sales fields using the official business profile map
