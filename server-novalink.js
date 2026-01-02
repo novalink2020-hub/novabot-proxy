@@ -418,7 +418,7 @@ const server = http.createServer(async (req, res) => {
           stage: sessionContext.stage || "غير_واضح",
           temperature: sessionContext.temperature || "بارد",
           interest: sessionContext.interest || null,
-          business: sessionContext.business || null,
+          business_id: sessionContext.business_id || null,
           last_message: sessionContext.last_user_message || null,
 
           timestamp: data?.meta?.timestamp || Date.now()
@@ -606,7 +606,8 @@ const server = http.createServer(async (req, res) => {
         JSON.stringify({
           ok: true,
           reply: brainReply?.reply || "",
-          actionCard: brainReply?.actionCard || null
+          actionCard: brainReply?.actionCard || null,
+          session_context: ctx
         })
       );
     } catch (e) {
