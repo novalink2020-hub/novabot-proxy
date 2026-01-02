@@ -349,7 +349,7 @@ const sessionContext = updateSessionContext(sessionKey, contactPatch) || {};
 
 // 3) دمج بيانات الـ Lead مع السياق
 const leadWithContext = {
-  session_id: sessionKey,
+  session_id: getPublicSessionId(sessionKey),
 
   event_type: data.event_type,
   action: data.action,
