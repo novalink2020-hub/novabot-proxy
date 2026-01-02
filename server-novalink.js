@@ -15,8 +15,9 @@ import crypto from "crypto";
 import { detectNovaIntent } from "./novaIntentDetector.js";
 import { novaBrainSystem } from "./novaBrainSystem.js";
 // Business Profile (Read-Only)
-import NovaLinkBusinessProfile, { normalizeIntentForSales } from "./businessProfiles/novalink.profile.js";
-
+import NovaLinkBusinessProfile, {
+  normalizeIntentForSales
+} from "./businessProfiles/novalink.profile.js";
 
 // -------------------------------------------
 // Load Knowledge V5 on boot (SAFE / OPTIONAL)
@@ -32,12 +33,15 @@ const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL || "";
     }
 
     const loaderFn =
-      (novaBrainSystem && typeof novaBrainSystem.loadKnowledgeFromURL === "function")
+      (novaBrainSystem &&
+        typeof novaBrainSystem.loadKnowledgeFromURL === "function")
         ? novaBrainSystem.loadKnowledgeFromURL
         : null;
 
     if (!loaderFn) {
-      console.log("ℹ️ novaBrainSystem.loadKnowledgeFromURL not found — skipping knowledge preload.");
+      console.log(
+        "ℹ️ novaBrainSystem.loadKnowledgeFromURL not found — skipping knowledge preload."
+      );
       return;
     }
 
@@ -75,8 +79,11 @@ function parseAllowedOrigins(envVal = "") {
   return envVal.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
-const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.NOVABOT_ALLOWED_ORIGINS || "");
-const BLOCK_UNKNOWN_ORIGIN = String(process.env.NOVABOT_BLOCK_UNKNOWN_ORIGIN || "true") === "true";
+const ALLOWED_ORIGINS = parseAllowedOrigins(
+  process.env.NOVABOT_ALLOWED_ORIGINS || ""
+);
+const BLOCK_UNKNOWN_ORIGIN =
+  String(process.env.NOVABOT_BLOCK_UNKNOWN_ORIGIN || "true") === "true";
 
 function getRequestOrigin(req) {
   if (req.headers.origin) return req.headers.origin;
@@ -100,7 +107,8 @@ function isOriginAllowed(origin) {
 // Layer 2: Signed Session Token
 // ============================================================
 const SESSION_SECRET = process.env.NOVABOT_SESSION_SECRET || "";
-const REQUIRE_SESSION = String(process.env.NOVABOT_REQUIRE_SESSION || "false") === "true";
+const REQUIRE_SESSION =
+  String(process.env.NOVABOT_REQUIRE_SESSION || "false") === "true";
 
 const SESSION_TTL_MS = 10 * 60 * 1000;
 
@@ -196,7 +204,8 @@ function firewallCheck(key) {
 // ============================================================
 // Layer 4: Turnstile Proof
 // ============================================================
-const REQUIRE_TURNSTILE = String(process.env.NOVABOT_REQUIRE_TURNSTILE || "false") === "true";
+const REQUIRE_TURNSTILE =
+  String(process.env.NOVABOT_REQUIRE_TURNSTILE || "false") === "true";
 const TURNSTILE_SECRET = process.env.NOVABOT_TURNSTILE_SECRET || "";
 
 async function verifyTurnstileToken(token, ip = "") {
@@ -210,11 +219,14 @@ async function verifyTurnstileToken(token, ip = "") {
     form.set("response", token);
     if (ip) form.set("remoteip", ip);
 
-    const resp = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString()
-    });
+    const resp = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: form.toString()
+      }
+    );
 
     const data = await resp.json().catch(() => ({}));
     if (data && data.success) return { ok: true };
@@ -257,10 +269,7 @@ function getPublicSessionId(sessionKey) {
 }
 
 function getSessionKey(req) {
-  return (
-    String(req.headers["x-novabot-session"] || "").trim() ||
-    "anonymous"
-  );
+  return String(req.headers["x-novabot-session"] || "").trim() || "anonymous";
 }
 
 function updateSessionContext(sessionKey, patch = {}) {
@@ -278,6 +287,40 @@ function getSessionContext(sessionKey) {
   return sessionContextStore.get(sessionKey) || null;
 }
 
+// ============================================================
+// Lead contact normalization (server-side, tolerant)
+// ============================================================
+function isProbablyEmail(v = "") {
+  const s = String(v || "").trim();
+  if (!s) return false;
+  // basic but practical
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+}
+
+function isProbablyPhone(v = "") {
+  const s = String(v || "").trim();
+  if (!s) return false;
+  // accept +, digits, spaces, dashes, parentheses; ensure enough digits
+  const digits = s.replace(/[^\d]/g, "");
+  if (digits.length < 7) return false;
+  return /^[+\d][\d\s\-()]{6,}$/.test(s);
+}
+
+function extractContact(data) {
+  const c = (data && data.contact) ? data.contact : {};
+  const emailDirect = String(c.email || "").trim();
+  const phoneDirect = String(c.phone || "").trim();
+  const value = String(c.value || "").trim();
+
+  const emailFromValue = !emailDirect && isProbablyEmail(value) ? value : "";
+  const phoneFromValue = !phoneDirect && isProbablyPhone(value) ? value : "";
+
+  return {
+    email: emailDirect || emailFromValue || "",
+    phone: phoneDirect || phoneFromValue || "",
+    value: value || ""
+  };
+}
 
 const server = http.createServer(async (req, res) => {
   const origin = getRequestOrigin(req);
@@ -303,7 +346,8 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204);
     return res.end();
   }
-    // ---------- Lead Event (UI) ----------
+
+  // ---------- Lead Event (UI) ----------
   if (req.method === "POST" && req.url === "/lead-event") {
     let body = "";
 
@@ -313,67 +357,68 @@ const server = http.createServer(async (req, res) => {
       try {
         const data = JSON.parse(body || "{}");
 
-// ===============================
-// Step 5.1 — Bind Lead to Session
-// ===============================
+        // ===============================
+        // Step 5.1 — Bind Lead to Session
+        // ===============================
 
-// 1) Session ID الداخلي (S-1, S-2...)
-let sessionKey = getSessionKey(req);
-if (
-  sessionKey === "anonymous" &&
-  typeof data?.conversation_context?.session_id === "string" &&
-  data.conversation_context.session_id.trim() &&
-  data.conversation_context.session_id.trim() !== "anonymous"
-) {
-  sessionKey = data.conversation_context.session_id.trim();
-}
+        // 1) Session ID الداخلي (S-1, S-2...)
+        let sessionKey = getSessionKey(req);
+        if (
+          sessionKey === "anonymous" &&
+          typeof data?.conversation_context?.session_id === "string" &&
+          data.conversation_context.session_id.trim() &&
+          data.conversation_context.session_id.trim() !== "anonymous"
+        ) {
+          sessionKey = data.conversation_context.session_id.trim();
+        }
 
-// 2) آخر Session Context محفوظ
-// 2) تحديث Session Context ببيانات التواصل (Step 5.1.5)
-const contactPatch = {};
+        // normalize contact (handles contact.value for consultation)
+        const contact = extractContact(data);
 
-if (data?.contact?.email) {
-  contactPatch.contact_email = data.contact.email;
-}
+        // 2) تحديث Session Context ببيانات التواصل (Step 5.1.5)
+        const contactPatch = {};
 
-if (data?.contact?.phone) {
-  contactPatch.contact_phone = data.contact.phone;
-}
+        if (contact.email) {
+          contactPatch.contact_email = contact.email;
+        }
 
-if (data?.card_id) {
-  contactPatch.last_action_card = data.card_id;
-}
+        if (contact.phone) {
+          contactPatch.contact_phone = contact.phone;
+        }
 
-// نحدّث الجلسة فورًا
-const sessionContext = updateSessionContext(sessionKey, contactPatch) || {};
+        if (data?.card_id) {
+          contactPatch.last_action_card = data.card_id;
+        }
 
-// 3) دمج بيانات الـ Lead مع السياق
-const leadWithContext = {
-  session_id: getPublicSessionId(sessionKey),
+        // نحدّث الجلسة فورًا
+        const sessionContext = updateSessionContext(sessionKey, contactPatch) || {};
 
-  event_type: data.event_type,
-  action: data.action,
-  card_id: data.card_id,
+        // 3) دمج بيانات الـ Lead مع السياق
+        const leadWithContext = {
+          session_id: getPublicSessionId(sessionKey),
 
-  email: data?.contact?.email || "",
-  page: data?.user_context?.page_url || "",
-  device: data?.user_context?.device || "",
-  language: data?.user_context?.language || "ar",
+          event_type: data.event_type,
+          action: data.action,
+          card_id: data.card_id,
 
-  // من Session Context (عربي بالكامل)
-  intent: sessionContext.intent || "غير_محدد",
-  stage: sessionContext.stage || "غير_واضح",
-  temperature: sessionContext.temperature || "بارد",
-  interest: sessionContext.interest || null,
-  business: sessionContext.business || null,
-  last_message: sessionContext.last_user_message || null,
+          email: contact.email || "",
+          page: data?.user_context?.page_url || "",
+          device: data?.user_context?.device || "",
+          language: data?.user_context?.language || "ar",
 
-  timestamp: data?.meta?.timestamp || Date.now()
-};
+          // من Session Context (عربي بالكامل)
+          intent: sessionContext.intent || "غير_محدد",
+          stage: sessionContext.stage || "غير_واضح",
+          temperature: sessionContext.temperature || "بارد",
+          interest: sessionContext.interest || null,
+          business: sessionContext.business || null,
+          last_message: sessionContext.last_user_message || null,
 
-// 4) Log موحّد — هذا هو الأساس للـ Google Sheets لاحقًا
-console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
+          timestamp: data?.meta?.timestamp || Date.now()
+        };
 
+        // 4) Log موحّد — هذا هو الأساس للـ Google Sheets لاحقًا
+        console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
       } catch (e) {
         console.warn("⚠️ Lead event parse error");
       }
@@ -386,13 +431,13 @@ console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
     return;
   }
 
-
   // ---------- GET /session ----------
   if (req.method === "GET" && req.url?.startsWith("/session")) {
     const token = issueSessionToken(origin || "");
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify({ ok: true, token, ttl_ms: SESSION_TTL_MS }));
   }
+
   // ---------- Telemetry (Frontend Loader) ----------
   if (req.method === "POST" && req.url === "/telemetry") {
     let body = "";
@@ -421,20 +466,20 @@ console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
 
     return;
   }
-// ---------- Debug: Session Context ----------
-if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
-  const key = getSessionKey(req);
-  res.writeHead(200, { "Content-Type": "application/json" });
-  return res.end(
-    JSON.stringify({
-      ok: true,
-      session: key,
-      context: getSessionContext(key)
-    })
-  );
-}
 
-  
+  // ---------- Debug: Session Context ----------
+  if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
+    const key = getSessionKey(req);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(
+      JSON.stringify({
+        ok: true,
+        session: key,
+        context: getSessionContext(key)
+      })
+    );
+  }
+
   // ---------- Health ----------
   if (req.method === "GET") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -457,7 +502,10 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
 
   // ---------- Layer 2 ----------
   if (REQUIRE_SESSION) {
-    const verdict = verifySessionToken(String(req.headers["x-novabot-session"] || ""), origin || "");
+    const verdict = verifySessionToken(
+      String(req.headers["x-novabot-session"] || ""),
+      origin || ""
+    );
     if (!verdict.ok) {
       res.writeHead(401, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ ok: false, error: "Unauthorized (invalid session)" }));
@@ -500,53 +548,49 @@ if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
       const analysis = await detectNovaIntent(msg);
       console.log("🔍 [INTENT RAW OUTPUT]", analysis);
 
-// ============================================================
-// Step 4A.4 — Map Intent → Business Signals (Arabic)
-// ============================================================
+      // ============================================================
+      // Step 4A.4 — Map Intent → Business Signals (Arabic)
+      // ============================================================
 
-const sessionKey =
-  getSessionKey(req) ||
-  data?.conversation_context?.session_id ||
-  "anonymous";
-const publicSessionId = getPublicSessionId(sessionKey);
+      const sessionKey =
+        getSessionKey(req) || data?.conversation_context?.session_id || "anonymous";
+      const publicSessionId = getPublicSessionId(sessionKey);
 
-// Normalize sales fields using the official business profile map
-const sales = normalizeIntentForSales(ACTIVE_BUSINESS_PROFILE, analysis);
+      // Normalize sales fields using the official business profile map
+      const sales = normalizeIntentForSales(ACTIVE_BUSINESS_PROFILE, analysis);
 
-// Build a clean “session context” snapshot (Arabic)
-const ctx = updateSessionContext(sessionKey, {
-  // IDs
-  session_id: publicSessionId,
-  business_id: sales.business_id,
+      // Build a clean “session context” snapshot (Arabic)
+      const ctx = updateSessionContext(sessionKey, {
+        // IDs
+        session_id: publicSessionId,
+        business_id: sales.business_id,
 
-  // Message + language
-  language: lang,
-  last_user_message: msg,
+        // Message + language
+        language: lang,
+        last_user_message: msg,
 
-  // Raw + mapped intent
-  raw_intent_id: sales.raw_intent_id,
-  intent: sales.intent,                 // عربي
-  stage: sales.stage,                   // عربي
-  temperature: sales.temperature,       // عربي
-  interest: sales.interest,             // interest id (مثل knowledge_subscription)
+        // Raw + mapped intent
+        raw_intent_id: sales.raw_intent_id,
+        intent: sales.intent, // عربي
+        stage: sales.stage, // عربي
+        temperature: sales.temperature, // عربي
+        interest: sales.interest, // interest id (مثل knowledge_subscription)
 
-  // Optional helper
-  suggested_card: sales.suggested_card || null,
+        // Optional helper
+        suggested_card: sales.suggested_card || null,
 
-  // Confidence
-  confidence: analysis?.confidence || null
-});
+        // Confidence
+        confidence: analysis?.confidence || null
+      });
 
-console.log("🧠 [SESSION CONTEXT UPDATED]", {
-  session: publicSessionId,
-  business: sales.business_id,
-  intent: sales.intent,
-  stage: sales.stage,
-  temperature: sales.temperature,
-  interest: sales.interest
-});
-
-
+      console.log("🧠 [SESSION CONTEXT UPDATED]", {
+        session: publicSessionId,
+        business: sales.business_id,
+        intent: sales.intent,
+        stage: sales.stage,
+        temperature: sales.temperature,
+        interest: sales.interest
+      });
 
       const brainReply = await novaBrainSystem({ message: msg, ...analysis });
 
