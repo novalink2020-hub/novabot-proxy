@@ -394,6 +394,12 @@ const server = http.createServer(async (req, res) => {
         const sessionContext = updateSessionContext(sessionKey, contactPatch) || {};
 
         // 3) دمج بيانات الـ Lead مع السياق
+        const isConsultationLead = data.action === "حجز_استشارة";
+        const storedEmail = isConsultationLead
+          ? (contact.email || contact.value || "")
+          : (contact.email || "");
+        const contactType = contact.email ? "email" : "phone";
+
         const leadWithContext = {
           session_id: getPublicSessionId(sessionKey),
 
@@ -401,7 +407,8 @@ const server = http.createServer(async (req, res) => {
           action: data.action,
           card_id: data.card_id,
 
-          email: contact.email || "",
+          email: storedEmail,
+          contact_type: contactType,
           page: data?.user_context?.page_url || "",
           device: data?.user_context?.device || "",
           language: data?.user_context?.language || "ar",
