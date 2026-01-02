@@ -318,7 +318,15 @@ const server = http.createServer(async (req, res) => {
 // ===============================
 
 // 1) Session ID الداخلي (S-1, S-2...)
-const sessionKey = getSessionKey(req);
+let sessionKey = getSessionKey(req);
+if (
+  sessionKey === "anonymous" &&
+  typeof data?.conversation_context?.session_id === "string" &&
+  data.conversation_context.session_id.trim() &&
+  data.conversation_context.session_id.trim() !== "anonymous"
+) {
+  sessionKey = data.conversation_context.session_id.trim();
+}
 
 // 2) آخر Session Context محفوظ
 // 2) تحديث Session Context ببيانات التواصل (Step 5.1.5)
