@@ -830,7 +830,7 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
   // =========================
   // 6) اشتراك / نشرة
   // =========================
-  if (subscribeScore > 0) {
+  if (subscribeScore > 0 && aiScore === 0 && bizScore === 0) {
     return buildResult({
       intentId: "subscribe_interest",
       confidence: 0.9,
@@ -908,7 +908,9 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
     else if (combinedScore >= 2) conf = 0.85;
 
     let suggestedCard = null;
-    if (consultScore > 0) {
+    if (subscribeScore > 0) {
+    suggestedCard = "business_subscribe";
+  }
       suggestedCard = "bot_lead";
     } else if (subscribeScore > 0) {
       suggestedCard = "business_subscribe";
