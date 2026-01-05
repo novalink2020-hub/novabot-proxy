@@ -642,13 +642,11 @@ function buildCollaborationReply() {
 function buildDeveloperIdentityReply(language = "ar") {
   // العربية هي الافتراضية دائمًا
   if (language !== "en") {
-    return `✨ من المهم أن تعرف من طوّر نوفا بوت و دربه،
-لا بدافع الفضول، بل لبناء الثقة.`;
+return `✨ من المهم أن تعرف من طوّر نوفا بوت و دربه، لا بدافع الفضول، بل لبناء الثقة.`;
   }
 
   // الإنجليزية فقط إذا فُرضت صراحة
-  return `✨ Sometimes, knowing who stands behind the tool matters —
-not out of curiosity, but to build trust.`;
+  return `✨ It matters to know who built and trained NovaBot — not out of curiosity, but to build trust.`;
 }
 
 function buildNovaLinkInfoReply() {
