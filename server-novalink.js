@@ -241,6 +241,12 @@ async function verifyTurnstileToken(token, ip = "") {
 // ============================================================
 const PORT = process.env.PORT || 10000;
 // ============================================================
+// Google Sheets Webhook (Lead Store – Step GS-1)
+// ============================================================
+const GOOGLE_SHEETS_WEBHOOK =
+  process.env.GOOGLE_SHEETS_WEBHOOK || "";
+
+// ============================================================
 // Active Business Profile (Read-Only)
 // ============================================================
 const ACTIVE_BUSINESS_PROFILE = NovaLinkBusinessProfile;
@@ -304,6 +310,22 @@ function isProbablyPhone(v = "") {
   const digits = s.replace(/[^\d]/g, "");
   if (digits.length < 7) return false;
   return /^[+\d][\d\s\-()]{6,}$/.test(s);
+}
+// ============================================================
+// Send Lead to Google Sheets (non-blocking)
+// ============================================================
+async function sendLeadToGoogleSheets(payload) {
+  if (!GOOGLE_SHEETS_WEBHOOK) return;
+
+  try {
+    await fetch(GOOGLE_SHEETS_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    console.warn("⚠️ Failed to send lead to Google Sheets");
+  }
 }
 
 function extractContact(data) {
@@ -426,6 +448,25 @@ const server = http.createServer(async (req, res) => {
 
         // 4) Log موحّد — هذا هو الأساس للـ Google Sheets لاحقًا
         console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
+        // Step GS-1: send only subscription leads to Google Sheets
+if (
+  leadWithContext.card_id === "subscribe" ||
+  leadWithContext.card_id === "business_subscribe"
+) {
+  sendLeadToGoogleSheets({
+    session_id: leadWithContext.session_id,
+    timestamp: new Date(leadWithContext.timestamp).toISOString(),
+    email: leadWithContext.email,
+    page_url: leadWithContext.page,
+    intent: leadWithContext.intent,
+    stage: leadWithContext.stage,
+    temperature: leadWithContext.temperature,
+    interest: leadWithContext.interest,
+    business: leadWithContext.business_id,
+    last_message: leadWithContext.last_message
+  });
+}
+
       } catch (e) {
         console.warn("⚠️ Lead event parse error");
       }
