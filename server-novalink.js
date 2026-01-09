@@ -35,26 +35,38 @@ function hashIp(ip) {
 }
 
 async function getGeo(req, ip) {
-  // 1) Cloudflare country header (zero-cost, best-effort)
+  // نبدأ بقيم افتراضية
+  const out = { country: "", region: "", city: "" };
+
+  // 1) Cloudflare country header (zero-cost)
   const cfCountry = req.headers["cf-ipcountry"];
   if (cfCountry && String(cfCountry).trim() && String(cfCountry).trim() !== "XX") {
-    return { country: String(cfCountry).trim(), region: "", city: "" };
+    out.country = String(cfCountry).trim();
   }
 
   // 2) Optional: ipinfo for region/city (only if token exists)
   const token = process.env.IPINFO_TOKEN || "";
-  if (!token || !ip) return { country: "", region: "", city: "" };
+  if (!token || !ip) return out;
 
   try {
-    const r = await fetch(`https://ipinfo.io/${encodeURIComponent(ip)}?token=${encodeURIComponent(token)}`);
+    const r = await fetch(
+      `https://ipinfo.io/${encodeURIComponent(ip)}?token=${encodeURIComponent(token)}`
+    );
     const j = await r.json().catch(() => ({}));
-    return {
-      country: j?.country ? String(j.country) : "",
-      region: j?.region ? String(j.region) : "",
-      city: j?.city ? String(j.city) : ""
-    };
+
+    // بعض الحالات ipinfo يرجع bogon للـ private/local IP
+    if (j && j.bogon) return out;
+
+    // عبّي region/city إن وجدت
+    if (j?.region) out.region = String(j.region);
+    if (j?.city) out.city = String(j.city);
+
+    // إذا لم يأت country من Cloudflare، خذه من ipinfo
+    if (!out.country && j?.country) out.country = String(j.country);
+
+    return out;
   } catch {
-    return { country: "", region: "", city: "" };
+    return out;
   }
 }
 
