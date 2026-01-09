@@ -10,6 +10,63 @@
 import http from "http";
 import { URL } from "url";
 import crypto from "crypto";
+// ============================================================
+// Geo + Privacy helpers (NO raw IP stored)
+// ============================================================
+
+function getClientIp(req) {
+  const cf = req.headers["cf-connecting-ip"];
+  const xff = req.headers["x-forwarded-for"];
+  const xri = req.headers["x-real-ip"];
+
+  if (cf) return String(cf).trim();
+  if (xff) return String(xff).split(",")[0].trim();
+  if (xri) return String(xri).trim();
+
+  // last fallback
+  return String(req.socket?.remoteAddress || "").trim();
+}
+
+function hashIp(ip) {
+  if (!ip) return "";
+  const salt = process.env.IP_HASH_SALT || "";
+  if (!salt) return ""; // إذا لم تضع SALT لن نرسل hash (أفضل من تخزين شيء ضعيف)
+  return crypto.createHash("sha256").update(ip + "|" + salt).digest("hex");
+}
+
+async function getGeo(req, ip) {
+  // 1) Cloudflare country header (zero-cost, best-effort)
+  const cfCountry = req.headers["cf-ipcountry"];
+  if (cfCountry && String(cfCountry).trim() && String(cfCountry).trim() !== "XX") {
+    return { country: String(cfCountry).trim(), region: "", city: "" };
+  }
+
+  // 2) Optional: ipinfo for region/city (only if token exists)
+  const token = process.env.IPINFO_TOKEN || "";
+  if (!token || !ip) return { country: "", region: "", city: "" };
+
+  try {
+    const r = await fetch(`https://ipinfo.io/${encodeURIComponent(ip)}?token=${encodeURIComponent(token)}`);
+    const j = await r.json().catch(() => ({}));
+    return {
+      country: j?.country ? String(j.country) : "",
+      region: j?.region ? String(j.region) : "",
+      city: j?.city ? String(j.city) : ""
+    };
+  } catch {
+    return { country: "", region: "", city: "" };
+  }
+}
+
+function isHighIntent(rawIntentId) {
+  return rawIntentId === "consulting_purchase" || rawIntentId === "collaboration";
+}
+
+function getEmailFromCtx(ctx) {
+  const v = String(ctx?.email || ctx?.contact_email || "").trim().toLowerCase();
+  return v;
+}
+
 
 // AI modules
 import { detectNovaIntent } from "./novaIntentDetector.js";
@@ -375,9 +432,14 @@ const server = http.createServer(async (req, res) => {
 
     req.on("data", (chunk) => (body += chunk));
 
-    req.on("end", () => {
+    req.on("end", async () => {
       try {
         const data = JSON.parse(body || "{}");
+        // Geo + ip_hash (privacy-safe)
+const clientIp = getClientIp(req);
+const ipHash = hashIp(clientIp);
+const geo = await getGeo(req, clientIp);
+
 
         // ===============================
         // Step 5.1 — Bind Lead to Session
@@ -400,9 +462,22 @@ const server = http.createServer(async (req, res) => {
         // 2) تحديث Session Context ببيانات التواصل (Step 5.1.5)
         const contactPatch = {};
 
-        if (contact.email) {
-          contactPatch.contact_email = contact.email;
-        }
+if (contact.email) {
+  contactPatch.contact_email = contact.email;
+  contactPatch.email = String(contact.email).trim().toLowerCase(); // مهم للترقية لاحقًا
+}
+
+// خزّن الصفحة الحالية (لتحديث الشيت لاحقًا بشكل أدق)
+if (data?.user_context?.page_url) {
+  contactPatch.page_url = data.user_context.page_url;
+}
+
+// خزّن geo/ip_hash في السياق (بدون IP خام)
+contactPatch.country = geo.country || "";
+contactPatch.region = geo.region || "";
+contactPatch.city = geo.city || "";
+contactPatch.ip_hash = ipHash || "";
+
 
         if (contact.phone) {
           contactPatch.contact_phone = contact.phone;
@@ -448,23 +523,69 @@ const server = http.createServer(async (req, res) => {
 
         // 4) Log موحّد — هذا هو الأساس للـ Google Sheets لاحقًا
         console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
+        // ============================================================
+// Flush pending high-intent if it existed before email arrived
+// ============================================================
+try {
+  const ctxNow = getSessionContext(sessionKey) || {};
+  const emailNow = getEmailFromCtx(ctxNow);
+
+  if (ctxNow.pending_lead_push === true && emailNow) {
+    // أرسل تحديث ترقية الليد (سيصعد للصف 2 عبر Apps Script)
+    sendLeadToGoogleSheets({
+      session_id: getPublicSessionId(sessionKey),
+      email: emailNow,
+      page_url: String(ctxNow.page_url || leadWithContext.page || ""),
+      intent: String(ctxNow.intent || leadWithContext.intent || ""),
+      stage: String(ctxNow.stage || leadWithContext.stage || ""),
+      temperature: String(ctxNow.temperature || leadWithContext.temperature || ""),
+      interest: String(ctxNow.interest || leadWithContext.interest || ""),
+      business: String(ctxNow.business_id || leadWithContext.business_id || ""),
+      last_message: String(ctxNow.last_user_message || leadWithContext.last_message || ""),
+
+      country: String(ctxNow.country || geo.country || ""),
+      region: String(ctxNow.region || geo.region || ""),
+      city: String(ctxNow.city || geo.city || ""),
+      ip_hash: String(ctxNow.ip_hash || ipHash || "")
+    });
+
+    // امسح pending حتى لا تتكرر
+    updateSessionContext(sessionKey, {
+      pending_lead_push: false,
+      pending_reason: ""
+    });
+
+    console.log("✅ [PENDING HIGH-INTENT FLUSHED TO SHEET]", { session: getPublicSessionId(sessionKey) });
+  }
+} catch {
+  // لا نكسر الواجهة
+}
+
         // Step GS-1: send only subscription leads to Google Sheets
 if (
   leadWithContext.card_id === "subscribe" ||
   leadWithContext.card_id === "business_subscribe"
 ) {
-  sendLeadToGoogleSheets({
-    session_id: leadWithContext.session_id,
-    timestamp: new Date(leadWithContext.timestamp).toISOString(),
-    email: leadWithContext.email,
-    page_url: leadWithContext.page,
-    intent: leadWithContext.intent,
-    stage: leadWithContext.stage,
-    temperature: leadWithContext.temperature,
-    interest: leadWithContext.interest,
-    business: leadWithContext.business_id,
-    last_message: leadWithContext.last_message
-  });
+sendLeadToGoogleSheets({
+  session_id: leadWithContext.session_id,
+  timestamp: new Date(leadWithContext.timestamp).toISOString(),
+
+  email: leadWithContext.email,
+  page_url: leadWithContext.page,
+
+  intent: leadWithContext.intent,
+  stage: leadWithContext.stage,
+  temperature: leadWithContext.temperature,
+  interest: leadWithContext.interest,
+  business: leadWithContext.business_id,
+  last_message: leadWithContext.last_message,
+
+  // NEW: geo + ip_hash
+  country: geo.country || "",
+  region: geo.region || "",
+  city: geo.city || "",
+  ip_hash: ipHash || ""
+});
 }
 
       } catch (e) {
@@ -492,7 +613,7 @@ if (
 
     req.on("data", (chunk) => (body += chunk));
 
-    req.on("end", () => {
+    req.on("end", async () => {
       try {
         const data = JSON.parse(body || "{}");
 
@@ -606,9 +727,15 @@ if (
 
       // Normalize sales fields using the official business profile map
       const sales = normalizeIntentForSales(ACTIVE_BUSINESS_PROFILE, analysis);
+      
+// Geo + ip_hash (privacy-safe) — used for sheet enrichment
+const clientIp2 = getClientIp(req);
+const ipHash2 = hashIp(clientIp2);
+const geo2 = await getGeo(req, clientIp2);
 
       // Build a clean “session context” snapshot (Arabic)
       const ctx = updateSessionContext(sessionKey, {
+        
         // IDs
         session_id: publicSessionId,
         business_id: sales.business_id,
@@ -628,7 +755,18 @@ if (
         suggested_card: sales.suggested_card || null,
 
         // Confidence
-        confidence: analysis?.confidence || null
+       confidence: analysis?.confidence || null,
+
+// NEW: geo + privacy (no raw IP)
+country: geo2.country || "",
+region: geo2.region || "",
+city: geo2.city || "",
+ip_hash: ipHash2 || "",
+
+// NEW: pending high-intent push control
+pending_lead_push: false,
+pending_reason: ""
+
       });
 
       console.log("🧠 [SESSION CONTEXT UPDATED]", {
@@ -639,6 +777,60 @@ if (
         temperature: sales.temperature,
         interest: sales.interest
       });
+// ============================================================
+// High-intent lead upgrade → push to Google Sheets (SAFE)
+// Rule: NEVER push without email (prevents session collision).
+// If missing email, store pending and flush when email arrives via /lead-event.
+// ============================================================
+try {
+  if (isHighIntent(sales.raw_intent_id)) {
+    const emailNow = getEmailFromCtx(ctx);
+
+    if (!emailNow) {
+      // لا نرسل بدون email — نخزن pending
+      updateSessionContext(sessionKey, {
+        pending_lead_push: true,
+        pending_reason: sales.raw_intent_id
+      });
+
+      console.log("🕒 [HIGH-INTENT PENDING — NO EMAIL YET]", {
+        session: publicSessionId,
+        reason: sales.raw_intent_id
+      });
+    } else {
+      // Send upgrade now
+      sendLeadToGoogleSheets({
+        session_id: publicSessionId,
+        email: emailNow,
+        page_url: String(ctx.page_url || ""),
+        intent: String(sales.intent || ctx.intent || ""),
+        stage: String(sales.stage || ctx.stage || ""),
+        temperature: String(sales.temperature || ctx.temperature || ""),
+        interest: String(sales.interest || ctx.interest || ""),
+        business: String(sales.business_id || ctx.business_id || ""),
+        last_message: String(ctx.last_user_message || ""),
+
+        country: String(ctx.country || ""),
+        region: String(ctx.region || ""),
+        city: String(ctx.city || ""),
+        ip_hash: String(ctx.ip_hash || "")
+      });
+
+      // clear any pending, just in case
+      updateSessionContext(sessionKey, {
+        pending_lead_push: false,
+        pending_reason: ""
+      });
+
+      console.log("📌 [HIGH-INTENT PUSHED TO SHEET]", {
+        session: publicSessionId,
+        intent: sales.raw_intent_id
+      });
+    }
+  }
+} catch {
+  // لا نكسر الرد للمستخدم
+}
 
       const brainReply = await novaBrainSystem({ message: msg, ...analysis });
 
