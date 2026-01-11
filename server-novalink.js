@@ -894,7 +894,7 @@ try {
   // لا نكسر الرد للمستخدم
 }
 
-      const brainReply = await novaBrainSystem({ message: msg, ...analysis });
+      const brainReply = await novaBrainSystem({ message: msg, session_id: publicSessionId, ...analysis });
 
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
