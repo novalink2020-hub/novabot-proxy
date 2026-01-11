@@ -88,6 +88,47 @@ import NovaLinkBusinessProfile, {
   normalizeIntentForSales
 } from "./businessProfiles/novalink.profile.js";
 
+// ============================================================
+// Logging controls (Production-friendly)
+// Toggle from Render env vars without touching code.
+// ============================================================
+const LOG_STARTUP =
+  String(process.env.NOVABOT_LOG_STARTUP || "true") === "true";
+
+const LOG_TELEMETRY =
+  String(process.env.NOVABOT_LOG_TELEMETRY || "false") === "true";
+
+const LOG_INTENT =
+  String(process.env.NOVABOT_LOG_INTENT || "false") === "true";
+
+const LOG_SESSION =
+  String(process.env.NOVABOT_LOG_SESSION || "false") === "true";
+
+const LOG_LEADS =
+  String(process.env.NOVABOT_LOG_LEADS || "false") === "true";
+
+const LOG_DEBUG =
+  String(process.env.NOVABOT_LOG_DEBUG || "false") === "true";
+
+function logIf(flag, ...args) {
+  if (flag) console.log(...args);
+}
+
+function warnIf(flag, ...args) {
+  if (flag) console.warn(...args);
+}
+
+function maskEmail(email = "") {
+  const e = String(email || "").trim();
+  const at = e.indexOf("@");
+  if (at <= 1) return e ? "***" : "";
+  const name = e.slice(0, at);
+  const domain = e.slice(at + 1);
+  const safeName = name.slice(0, 2) + "***";
+  return `${safeName}@${domain}`;
+}
+
+
 // -------------------------------------------
 // Load Knowledge V5 on boot (SAFE / OPTIONAL)
 // -------------------------------------------
@@ -97,7 +138,7 @@ const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL || "";
 (async () => {
   try {
     if (!KNOWLEDGE_URL) {
-      console.log("ℹ️ KNOWLEDGE_V5_URL is not set — skipping knowledge preload.");
+      logIf(LOG_STARTUP, "ℹ️ KNOWLEDGE_V5_URL is not set — skipping knowledge preload.");
       return;
     }
 
@@ -108,15 +149,16 @@ const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL || "";
         : null;
 
     if (!loaderFn) {
-      console.log(
-        "ℹ️ novaBrainSystem.loadKnowledgeFromURL not found — skipping knowledge preload."
-      );
+      logIf(
+  LOG_STARTUP,
+  "ℹ️ novaBrainSystem.loadKnowledgeFromURL not found — skipping knowledge preload."
+);
       return;
     }
 
-    console.log("📚 Loading Nova Knowledge V5...");
+    logIf(LOG_STARTUP, "📚 Loading Nova Knowledge V5...");
     await loaderFn.call(novaBrainSystem, KNOWLEDGE_URL);
-    console.log("✅ Knowledge V5 loaded successfully!");
+    logIf(LOG_STARTUP, "✅ Knowledge V5 loaded successfully!");
   } catch (err) {
     console.error("❌ Failed to load knowledge (non-fatal):", err);
   }
@@ -393,7 +435,7 @@ async function sendLeadToGoogleSheets(payload) {
       body: JSON.stringify(payload)
     });
   } catch (e) {
-    console.warn("⚠️ Failed to send lead to Google Sheets");
+    warnIf(LOG_DEBUG, "⚠️ Failed to send lead to Google Sheets");
   }
 }
 
@@ -534,7 +576,11 @@ contactPatch.ip_hash = ipHash || "";
         };
 
         // 4) Log موحّد — هذا هو الأساس للـ Google Sheets لاحقًا
-        console.log("📥 [LEAD EVENT LINKED TO SESSION]", leadWithContext);
+        logIf(LOG_LEADS, "📥 [LEAD EVENT LINKED TO SESSION]", {
+  ...leadWithContext,
+  email: maskEmail(leadWithContext.email),
+});
+
         // ============================================================
 // Flush pending high-intent if it existed before email arrived
 // ============================================================
@@ -567,7 +613,10 @@ try {
       pending_reason: ""
     });
 
-    console.log("✅ [PENDING HIGH-INTENT FLUSHED TO SHEET]", { session: getPublicSessionId(sessionKey) });
+    logIf(LOG_LEADS, "✅ [PENDING HIGH-INTENT FLUSHED TO SHEET]", {
+  session: getPublicSessionId(sessionKey),
+});
+
   }
 } catch {
   // لا نكسر الواجهة
@@ -601,7 +650,7 @@ sendLeadToGoogleSheets({
 }
 
       } catch (e) {
-        console.warn("⚠️ Lead event parse error");
+        warnIf(LOG_DEBUG, "⚠️ Lead event parse error");
       }
 
       // نعيد OK دائمًا — لا نكسر الواجهة
@@ -629,7 +678,7 @@ sendLeadToGoogleSheets({
       try {
         const data = JSON.parse(body || "{}");
 
-        console.log("📡 [TELEMETRY]", {
+        logIf(LOG_TELEMETRY, "📡 [TELEMETRY]", {
           source: data.source || "unknown",
           stage: data.stage,
           status: data.status,
@@ -637,7 +686,7 @@ sendLeadToGoogleSheets({
           extra: data.extra || null
         });
       } catch (e) {
-        console.warn("⚠️ Telemetry parse error");
+        warnIf(LOG_DEBUG, "⚠️ Telemetry parse error");
       }
 
       // نعيد 200 دائمًا — لا نكسر الواجهة أبدًا
@@ -650,6 +699,10 @@ sendLeadToGoogleSheets({
 
   // ---------- Debug: Session Context ----------
   if (req.method === "GET" && req.url?.startsWith("/debug/session")) {
+        if (!LOG_DEBUG) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ ok: false, error: "Not found" }));
+    }
     const key = getSessionKey(req);
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(
@@ -671,7 +724,7 @@ sendLeadToGoogleSheets({
         time: Date.now(),
         require_turnstile: REQUIRE_TURNSTILE,
         require_session: REQUIRE_SESSION,
-        allowed_origins: ALLOWED_ORIGINS
+        allowed_origins: LOG_DEBUG ? ALLOWED_ORIGINS : undefined
       })
     );
   }
@@ -727,7 +780,7 @@ sendLeadToGoogleSheets({
 
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
-      console.log("🔍 [INTENT RAW OUTPUT]", analysis);
+      logIf(LOG_INTENT, "🔍 [INTENT RAW OUTPUT]", analysis);
 
       // ============================================================
       // Step 4A.4 — Map Intent → Business Signals (Arabic)
@@ -775,13 +828,10 @@ region: geo2.region || "",
 city: geo2.city || "",
 ip_hash: ipHash2 || "",
 
-// NEW: pending high-intent push control
-pending_lead_push: false,
-pending_reason: ""
 
       });
 
-      console.log("🧠 [SESSION CONTEXT UPDATED]", {
+      logIf(LOG_SESSION, "🧠 [SESSION CONTEXT UPDATED]", {
         session: publicSessionId,
         business: sales.business_id,
         intent: sales.intent,
@@ -805,7 +855,7 @@ try {
         pending_reason: sales.raw_intent_id
       });
 
-      console.log("🕒 [HIGH-INTENT PENDING — NO EMAIL YET]", {
+      logIf(LOG_LEADS, "🕒 [HIGH-INTENT PENDING — NO EMAIL YET]", {
         session: publicSessionId,
         reason: sales.raw_intent_id
       });
@@ -834,7 +884,7 @@ try {
         pending_reason: ""
       });
 
-      console.log("📌 [HIGH-INTENT PUSHED TO SHEET]", {
+      logIf(LOG_LEADS, "📌 [HIGH-INTENT PUSHED TO SHEET]", {
         session: publicSessionId,
         intent: sales.raw_intent_id
       });
