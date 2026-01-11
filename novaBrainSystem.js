@@ -200,6 +200,53 @@ const MODELS_TO_TRY = [
   "gemini-1.0-pro"
 ];
 
+// ============================================================
+// 3-Strikes Policy (In-Memory) — Pivot back to AI Business
+// Strike 1: Pivot AI قصير
+// Strike 2: Pivot أقصر مع دفع للعودة
+// Strike 3+: رد تحفيزي ثابت من الستة (genericReplies)
+// ============================================================
+const STRIKES_ENABLED = true;
+const STRIKES_MAX = 3;
+
+// sessionKey => { count:number, updatedAt:number }
+const strikeStore = new Map();
+
+function getBrainSessionKey(req = {}) {
+  // نحاول نأخذ session_id (أفضل) أو أي مفتاح يرسله السيرفر لاحقًا
+  const s =
+    String(req.session_id || req.sessionId || req.session_key || req.sessionKey || "").trim();
+  return s || "anonymous";
+}
+
+function isOutOfScopeIntent(intentId = "") {
+  const id = String(intentId || "").trim();
+  return id === "out_of_scope" || id === "casual";
+}
+
+function resetStrikes(sessionKey) {
+  if (!sessionKey) return;
+  strikeStore.set(sessionKey, { count: 0, updatedAt: Date.now() });
+}
+
+function bumpStrike(sessionKey) {
+  const prev = strikeStore.get(sessionKey) || { count: 0, updatedAt: 0 };
+  const next = { count: Math.min(prev.count + 1, STRIKES_MAX), updatedAt: Date.now() };
+  strikeStore.set(sessionKey, next);
+  return next.count;
+}
+
+// Pivot templates (fallback لو Gemini فشل/مغلق)
+function buildPivot1Fallback() {
+  return `🧭 سؤالك مفهوم، لكن نوفا بوت مُصمم أساسًا للذكاء الاصطناعي وتطوير الأعمال.<br>
+إذا تحب، اكتب لي: <strong>مجالك</strong> + <strong>هدفك</strong> + <strong>وقتك المتاح</strong>… وأنا أعطيك خطة عملية مختصرة.`;
+}
+
+function buildPivot2Fallback() {
+  return `🎯 خلّينا نرجع للشيء اللي يطلع لك “نتيجة” بسرعة.<br>
+اكتب سطر واحد فقط: <strong>أنا أريد استخدام الذكاء الاصطناعي لـ…</strong> (مبيعات/محتوى/خدمة عملاء/إدارة وقت).`;
+}
+
 /* =============== أدوات مساعدة للنصوص =============== */
 
 function escapeHtml(str = "") {
@@ -774,6 +821,9 @@ function buildGeminiPrompt(
   if (bestItem) {
     base += `- Related article title: ${bestItem.title || ""}\n`;
   }
+    if (analysis.policyHint) {
+    base += `- policyHint: ${analysis.policyHint}\n`;
+  }
 
   if (Array.isArray(recentConcepts) && recentConcepts.length) {
     const lastConcepts = recentConcepts.slice(-3).join(" | ");
@@ -790,6 +840,9 @@ function buildGeminiPrompt(
   base += `- If the user writes in English, answer in clear, simple, professional English.\n`;
   base += `- You are NovaBot, the assistant of NovaLink (an Arabic platform about AI for business and careers).\n`;
   base += `- Focus on practical, actionable insights related to the user's question.\n`;
+    base += `- If policyHint indicates pivot, respond with a short pivot back to AI-for-business and give 2 example questions.\n`;
+  base += `- Do NOT shame the user. Be firm, brief, and helpful.\n`;
+
   base += `- Do NOT include any URLs or links in your answer text.\n`;
   base += `- Keep the answer within the provided maxTokens budget so it feels مختصرًا وكاملاً.\n`;
   base += `- Make the answer feel complete, not cut off in the middle of a sentence.\n`;
@@ -901,6 +954,14 @@ export async function novaBrainSystem(request) {
 
   const isAIQuestion = effectiveIntentId === "ai_business";
   const isAISession = detectAISession(effectiveIntentId, sessionHistory);
+    // Session key for strike policy
+  const brainSessionKey = getBrainSessionKey(request);
+
+  // لو دخل المستخدم في نطاق AI الحقيقي، نصفر الضربات
+  if (STRIKES_ENABLED && (effectiveIntentId === "ai_business" || originalIntentId === "ai_business")) {
+    resetStrikes(brainSessionKey);
+  }
+
   const finalizeResponse = (
     reply,
     {
@@ -932,21 +993,12 @@ export async function novaBrainSystem(request) {
 
   // 0.1) بطاقة المطوّر
   if (hasDeveloperCode(userText)) {
-   // 0.1) بطاقة المطوّر
-if (hasDeveloperCode(userText)) {
-  const langPref = shouldUseEnglishPreface(userText) ? "en" : "ar";
+    const langPref = shouldUseEnglishPreface(userText) ? "en" : "ar";
 
-  return finalizeResponse(
-    buildDeveloperIdentityReply(langPref),
-    {
+    return finalizeResponse(buildDeveloperIdentityReply(langPref), {
       actionCard: "developer_identity",
       matchType: "fixed"
-    }
-  );
-}
-
-
-    return finalizeResponse(reply, { actionCard: "developer_identity", matchType: "fixed" });
+    });
   }
 
   // 0.2) وداع
@@ -954,10 +1006,11 @@ if (hasDeveloperCode(userText)) {
     return finalizeResponse(buildGoodbyeReply(), { resetConcepts: true, matchType: "goodbye" });
   }
 
-  // 0.3) خارج النطاق دائمًا بدون AI
-  if (originalIntentId === "out_of_scope") {
+  // 0.3) خارج النطاق: لا نرجع فورًا إذا كانت سياسة 3 ضربات مفعّلة
+  if (originalIntentId === "out_of_scope" && !STRIKES_ENABLED) {
     return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
   }
+
 
   // 1) نوايا ثابتة (طالما لسنا مجبرين على AI)
   if (!forceAI) {
@@ -1005,16 +1058,62 @@ if (hasDeveloperCode(userText)) {
       return finalizeResponse(buildNovaBotInfoReply(), { matchType: "fixed" });
     }
 
-    if (originalIntentId === "out_of_scope" || originalIntentId === "casual") {
-      if (!isAISession && !isAIQuestion) {
-        return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
+        if (originalIntentId === "out_of_scope" || originalIntentId === "casual") {
+      // 3-Strikes Policy: نحاول Pivot للذكاء الاصطناعي بدل “تجاهل”
+      if (STRIKES_ENABLED && !isAISession && !isAIQuestion && !forceAI) {
+        const strike = bumpStrike(brainSessionKey);
+
+        // Strike 1: Pivot AI قصير
+        if (strike === 1) {
+          const ai = allowGemini
+            ? await callGemini(
+                userText,
+                { ...request, policyHint: "pivot_short", intentId: "pivot" },
+                null,
+                false,
+                70,
+                sessionConcepts
+              )
+            : null;
+
+          return finalizeResponse(
+            ai ? escapeHtml(ai).replace(/\n/g, "<br>") : buildPivot1Fallback(),
+            { matchType: "pivot_1", usedAI: !!ai, geminiUsed: !!ai, maxTokens: ai ? 70 : 0 }
+          );
+        }
+
+        // Strike 2: Pivot أقصر مع دفع للعودة
+        if (strike === 2) {
+          const ai = allowGemini
+            ? await callGemini(
+                userText,
+                { ...request, policyHint: "pivot_shorter", intentId: "pivot" },
+                null,
+                false,
+                40,
+                sessionConcepts
+              )
+            : null;
+
+          return finalizeResponse(
+            ai ? escapeHtml(ai).replace(/\n/g, "<br>") : buildPivot2Fallback(),
+            { matchType: "pivot_2", usedAI: !!ai, geminiUsed: !!ai, maxTokens: ai ? 40 : 0 }
+          );
+        }
+
+        // Strike 3+: رد تحفيزي ثابت من الستة (genericReplies)
+        return finalizeResponse(getRandomGenericReply(), { matchType: "pivot_3" });
       }
-      // لو الجلسة AI لكن النية casual سنسمح لـ Gemini لاحقًا
+
+      // لو الجلسة AI أو سؤال AI، نكمل طبيعي
     }
+
   }
 
   // 2) تحميل المعرفة + أفضل تطابق (للمجالات ذات الصلة فقط)
-  const allowKnowledge = effectiveIntentId === "ai_business" && allowGemini;
+    // AI-first: نسمح بالمعرفة طالما Gemini مسموح (عدد عناصر المعرفة قليل عندك، فالأثر مقبول)
+  const allowKnowledge = allowGemini;
+
   let bestMatch = { score: 0, item: null };
 
   if (allowKnowledge) {
@@ -1039,8 +1138,9 @@ if (hasDeveloperCode(userText)) {
   // 2-ب) تطابق متوسط → Gemini قصير + رابط (maxTokens = 100)
   if (item && score >= MEDIUM_MATCH_THRESHOLD) {
     const aiText =
-      allowGemini && effectiveIntentId === "ai_business"
+      allowGemini && (effectiveIntentId === "ai_business" || isAISession || forceAI)
         ? await callGemini(
+
             userText,
             { ...request, sessionTier, contextFollowing: request.contextFollowing, topicTransition },
             item,
