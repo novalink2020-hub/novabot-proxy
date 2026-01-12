@@ -908,6 +908,11 @@ async function callGemini(
       if (text.length <= 2) {
         continue;
       }
+      // ترميم بسيط لو النص انقطع بدون خاتمة
+if (!/[.!؟…]$/.test(text)) {
+  text = text.replace(/\s+$/g, "") + "…";
+}
+
 
       const tailAr = " وإذا احتجت توضيحًا أعمق في نقطة معيّنة، اطلب مني أن أتعمّق فيها أكثر.";
       const tailEn = " If you’d like a deeper explanation on a specific part, just ask me to go deeper on it.";
