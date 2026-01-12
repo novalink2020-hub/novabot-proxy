@@ -82,7 +82,7 @@ function getEmailFromCtx(ctx) {
 
 // AI modules
 import { detectNovaIntent } from "./novaIntentDetector.js";
-import { novaBrainSystem } from "./novaBrainSystem.js";
+import { novaBrainSystem, loadKnowledgeFromURL } from "./novaBrainSystem.js";
 // Business Profile (Read-Only)
 import NovaLinkBusinessProfile, {
   normalizeIntentForSales
@@ -142,11 +142,7 @@ const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL || "";
       return;
     }
 
-    const loaderFn =
-      (novaBrainSystem &&
-        typeof novaBrainSystem.loadKnowledgeFromURL === "function")
-        ? novaBrainSystem.loadKnowledgeFromURL
-        : null;
+const loaderFn = (typeof loadKnowledgeFromURL === "function") ? loadKnowledgeFromURL : null;
 
     if (!loaderFn) {
       logIf(
@@ -157,7 +153,7 @@ const KNOWLEDGE_URL = process.env.KNOWLEDGE_V5_URL || "";
     }
 
     logIf(LOG_STARTUP, "📚 Loading Nova Knowledge V5...");
-    await loaderFn.call(novaBrainSystem, KNOWLEDGE_URL);
+    await loaderFn(KNOWLEDGE_URL);
     logIf(LOG_STARTUP, "✅ Knowledge V5 loaded successfully!");
   } catch (err) {
     console.error("❌ Failed to load knowledge (non-fatal):", err);
