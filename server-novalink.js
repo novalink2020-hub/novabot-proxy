@@ -750,9 +750,7 @@ sendLeadToGoogleSheets({
     try {
       const data = JSON.parse(body || "{}");
       const msg = (data.message || "").trim();
-      // سنعتمد لاحقًا على لغة الـ detector لأنه أدق مع النصوص المختلطة
-let lang = detectLang(msg);
-
+      const lang = detectLang(msg);
 
       if (!msg) {
         res.writeHead(400, { "Content-Type": "application/json" });
@@ -778,40 +776,15 @@ let lang = detectLang(msg);
 
       // ---------- Normal flow ----------
       const analysis = await detectNovaIntent(msg);
-      // اجعل لغة السيرفر متطابقة مع تحليل intent detector (يمنع mismatch في الردود)
-if (analysis?.language === "ar" || analysis?.language === "en") {
-  lang = analysis.language;
-}
-
       logIf(LOG_INTENT, "🔍 [INTENT RAW OUTPUT]", analysis);
-      logIf(LOG_INTENT, "🧭 [INTENT ROUTE]", {
-  sessionKey,
-  publicSessionId: getPublicSessionId(sessionKey),
-  msg: String(msg).slice(0, 160),
-  intentId: analysis?.intentId,
-  confidence: analysis?.confidence,
-  language: analysis?.language,
-  dialectHint: analysis?.dialectHint,
-  toneHint: analysis?.toneHint,
-  suggestedCard: analysis?.suggestedCard,
-  aiScore: analysis?.aiScore,
-  bizScore: analysis?.bizScore
-});
-
 
       // ============================================================
       // Step 4A.4 — Map Intent → Business Signals (Arabic)
       // ============================================================
 
       const sessionKey =
-        getSessionKey(req) ||
-        (typeof data?.conversation_context?.session_id === "string"
-          ? data.conversation_context.session_id.trim()
-          : "") ||
-        "anonymous";
-
+        getSessionKey(req) || data?.conversation_context?.session_id || "anonymous";
       const publicSessionId = getPublicSessionId(sessionKey);
-
 
       // Normalize sales fields using the official business profile map
       const sales = normalizeIntentForSales(ACTIVE_BUSINESS_PROFILE, analysis);
