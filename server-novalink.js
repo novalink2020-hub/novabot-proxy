@@ -803,19 +803,15 @@ if (analysis?.language === "ar" || analysis?.language === "en") {
       // Step 4A.4 — Map Intent → Business Signals (Arabic)
       // ============================================================
 
-let sessionKey = getSessionKey(req) || "anonymous";
-
-// إذا الهيدر مش موجود وطلع anonymous، خذ session_id من البودي إن كان موجودًا
-if (
-  sessionKey === "anonymous" &&
-  typeof data?.conversation_context?.session_id === "string" &&
-  data.conversation_context.session_id.trim() &&
-  data.conversation_context.session_id.trim() !== "anonymous"
-) {
-  sessionKey = data.conversation_context.session_id.trim();
-}
+      const sessionKey =
+        getSessionKey(req) ||
+        (typeof data?.conversation_context?.session_id === "string"
+          ? data.conversation_context.session_id.trim()
+          : "") ||
+        "anonymous";
 
       const publicSessionId = getPublicSessionId(sessionKey);
+
 
       // Normalize sales fields using the official business profile map
       const sales = normalizeIntentForSales(ACTIVE_BUSINESS_PROFILE, analysis);
