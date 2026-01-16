@@ -54,8 +54,40 @@ const NOVABOT_TEXT_PACKAGE = {
     "🔵 <strong>رحلة نوفا لينك</strong><br>🌟 بدأت نوفا لينك كفكرة بسيطة أثناء رحلة شخصية لاكتشاف الذكاء الاصطناعي، ثم تحوّلت إلى مشروع حيّ يفتح الطريق لكل من يريد أن يتعلّم ويطبّق لا أن يكتفي بالمشاهدة.<br><br>إنها قصة شغف وجرأة… بدأت من فضول فردي، وتحولت إلى مجتمع من صانعي المستقبل.<br><br>🔗 <a href=\"https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk\" target=\"_blank\" class=\"nova-link\">اقرأ القصة الكاملة: هكذا بدأت نوفا لينك</a>",
   mission:
     "🟠 <strong>هدف نوفا لينك</strong><br>🚀 رؤيتنا في نوفا لينك بسيطة لكنها عميقة: أن يصبح الذكاء الاصطناعي أداة لكل إنسان، لا امتيازًا للنخبة التقنية.<br><br>نكتب، نجرّب، ونشاركك الأدوات التي تصنع فارقًا فعليًا في الإنتاجية وريادة الأعمال.<br><br>✨ هدفنا أن تكون أنت التغيير القادم، خطوة بخطوة، بثقة ومعرفة.<br><br>🔗 <a href=\"https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal\" target=\"_blank\" class=\"nova-link\">ابدأ رحلتك العملية</a>",
+  vision:
+    "🟣 <strong>رؤية نوفا لينك</strong><br>نطمح إلى مستقبل يصبح فيه الذكاء الاصطناعي ميزة يومية للجميع — يحرّرك من التكرار ويمنحك مساحة أكبر للإبداع واتخاذ القرار، لا للاستهلاك والتشتت."
   goodbye:
     "سعيد بهذه الجولة من الحوار معك 🌱<br><br>أتمنّى أن تكون فكرة واحدة على الأقل قد فتحت لك زاوية جديدة للتفكير أو العمل.<br><br>نوفا بوت سيبقى هنا عندما تعود… ومع كل زيارة، يمكن أن نضيف طبقة جديدة لمسارك مع الذكاء الاصطناعي والأعمال."
+  // ===== English Pack (Automated Replies) =====
+  genericReplies_en: [
+    "👋 Welcome to NovaLink. We turn AI into practical outcomes for business and careers.<br>Start here: <a href=\"https://novalink-ai.com/ashtrk-alan\" target=\"_blank\" class=\"nova-link\">Begin</a>",
+    "🚀 AI isn’t the goal — results are. Explore practical tools here:<br><a href=\"https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal\" target=\"_blank\" class=\"nova-link\">Explore tools</a>",
+    "✨ One small improvement beats endless research. Tell me your goal and I’ll propose a simple plan."
+  ],
+  positiveReplies_en: [
+    "🎉 Thanks — happy to help. Tell me what you’re trying to achieve and I’ll make it practical.",
+    "🙏 Appreciate it. If you share your context (business + goal + time), I’ll give you a clear next step."
+  ],
+  negativeReplies_en: [
+    "🤝 Fair point. Tell me what was missing, and I’ll answer in a clearer, more practical way.",
+    "💬 You deserve a useful answer. Give me one detail (your goal), and I’ll tighten the reply."
+  ],
+  welcomeFirst_en:
+    "👋 Welcome to NovaLink.<br>Ask anything about AI for business, content, or careers — and I’ll keep it practical.",
+  welcomeReturning_en:
+    "👋 Welcome back to NovaLink.<br>Want an article, a tool, or a quick plan for your next step?",
+  noMatch_en:
+    "💬 This is a fresh angle we haven’t covered yet in NovaLink.<br>Share what you want to achieve, and I’ll guide you with a practical direction.",
+  aboutNovaLink_en:
+    "🟠 <strong>About NovaLink</strong><br>NovaLink is an Arabic platform that helps you turn AI tools into real outcomes — for your business, work, and ideas.<br><br><a href=\"https://novalink-ai.com/about-us-althkaa-alastnaay\" target=\"_blank\" class=\"nova-link\">Learn more</a>",
+  story_en:
+    "🔵 <strong>NovaLink Story</strong><br>NovaLink started as a personal journey into AI, then became a practical platform for people who want to learn and apply — not just watch.<br><br><a href=\"https://novalink-ai.com/rhlh-frdyh-fy-aalm-althkaa-alastnaay-hktha-bdat-nwfa-lynk\" target=\"_blank\" class=\"nova-link\">Read the full story</a>",
+  mission_en:
+    "🟠 <strong>NovaLink Mission</strong><br>Make AI practical and accessible — not a privilege for tech elites. We test, simplify, and share what actually moves productivity and business forward.<br><br><a href=\"https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal\" target=\"_blank\" class=\"nova-link\">Start practical</a>",
+  vision_en:
+    "🟣 <strong>NovaLink Vision</strong><br>A future where AI becomes a daily advantage for everyone — helping people focus on creativity and decision-making, not repetitive tasks.",
+  goodbye_en:
+    "Glad we chatted 🌱<br><br>If even one idea helped, that’s a win.<br>NovaBot will be here when you’re back — and we’ll keep building step by step."  
 };
 
 function randomFrom(list = []) {
@@ -63,7 +95,10 @@ function randomFrom(list = []) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
-const getRandomGenericReply = () => randomFrom(NOVABOT_TEXT_PACKAGE.genericReplies);
+const getRandomGenericReply = (lang = "ar") =>
+  lang === "en"
+    ? randomFrom(NOVABOT_TEXT_PACKAGE.genericReplies_en || [])
+    : randomFrom(NOVABOT_TEXT_PACKAGE.genericReplies || []);
 
 const ARABIC_STOPWORDS = new Set([
   "من",
@@ -650,18 +685,29 @@ function buildAutomatedFallbackReply() {
   return NOVABOT_TEXT_PACKAGE.noMatch;
 }
 
-function buildGreetingReply(isReturning = false) {
+function buildGreetingReply(isReturning = false, lang = "ar") {
+  if (lang === "en") {
+    return isReturning
+      ? NOVABOT_TEXT_PACKAGE.welcomeReturning_en
+      : NOVABOT_TEXT_PACKAGE.welcomeFirst_en;
+  }
+
   return isReturning
     ? NOVABOT_TEXT_PACKAGE.welcomeReturning
     : NOVABOT_TEXT_PACKAGE.welcomeFirst;
 }
 
-function buildThanksPositiveReply() {
-  return randomFrom(NOVABOT_TEXT_PACKAGE.positiveReplies);
+
+function buildThanksPositiveReply(lang = "ar") {
+  return lang === "en"
+    ? randomFrom(NOVABOT_TEXT_PACKAGE.positiveReplies_en || [])
+    : randomFrom(NOVABOT_TEXT_PACKAGE.positiveReplies || []);
 }
 
-function buildNegativeMoodReply() {
-  return randomFrom(NOVABOT_TEXT_PACKAGE.negativeReplies);
+function buildNegativeMoodReply(lang = "ar") {
+  return lang === "en"
+    ? randomFrom(NOVABOT_TEXT_PACKAGE.negativeReplies_en || [])
+    : randomFrom(NOVABOT_TEXT_PACKAGE.negativeReplies || []);
 }
 
 function buildSubscribeInterestReply() {
@@ -709,8 +755,10 @@ function buildNovaBotInfoReply() {
  كلما كان سؤالك أوضح ومرتبطًا بعملك، كانت إجابته أدق وأكثر فائدة.`;
 }
 
-function buildGoodbyeReply() {
-  return NOVABOT_TEXT_PACKAGE.goodbye;
+function buildGoodbyeReply(lang = "ar") {
+  return lang === "en"
+    ? NOVABOT_TEXT_PACKAGE.goodbye_en
+    : NOVABOT_TEXT_PACKAGE.goodbye;
 }
 
 function isGoodbyeMessage(text = "") {
