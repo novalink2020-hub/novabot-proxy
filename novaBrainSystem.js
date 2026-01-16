@@ -1053,6 +1053,15 @@ export async function novaBrainSystem(request) {
   const weightScore = request.weightScore || 0;
   const allowGemini = request.allowGemini !== false;
   const topicTransition = request.topicTransition || "same_topic";
+    // UX Rule: إذا النبرة سلبية، لا نعرض بطاقة اشتراك الأعمال
+  const toneHintLower = String(request.toneHint || "").toLowerCase();
+  const suppressBusinessSubscribeCard = toneHintLower === "negative";
+
+  const safeActionCard = (card) => {
+    if (suppressBusinessSubscribeCard && card === "business_subscribe") return null;
+    return card;
+  };
+
 
   const sessionHistory = Array.isArray(request.recentMessages)
     ? request.recentMessages
@@ -1240,7 +1249,7 @@ return finalizeResponse(
   if (item && score >= STRONG_MATCH_THRESHOLD) {
     const replyHtml = buildStrongMatchReply(item);
     return finalizeResponse(replyHtml, {
-      actionCard: request.suggestedCard || null,
+      actionCard: safeActionCard(request.suggestedCard || null),
       matchType: "strong_match",
       maxTokens: 0
     });
@@ -1264,7 +1273,7 @@ return finalizeResponse(
     if (aiText) {
       const replyHtml = wrapAiAnswerWithLink(aiText, item);
       return finalizeResponse(replyHtml, {
-        actionCard: request.suggestedCard || null,
+        actionCard: safeActionCard(request.suggestedCard || null),
         usedAI: true,
         geminiUsed: true,
         matchType: "medium_match",
@@ -1347,7 +1356,7 @@ if (aiText) {
   const needsPreface = String(request.toneHint || "").toLowerCase() === "negative";
   const preface = needsPreface ? (buildNegativePreface(language, request.dialectHint) + "<br><br>") : "";
   return finalizeResponse(preface + safe, {
-    actionCard: request.suggestedCard || null,
+    actionCard: safeActionCard(request.suggestedCard || null),
     usedAI: true,
     geminiUsed: true,
     matchType: "direct_ai",
