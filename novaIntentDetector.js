@@ -24,11 +24,18 @@ function normalize(str = "") {
     .trim();
 }
 
+function includesKeyword(text, kw) {
+  if (!text || !kw) return false;
+  const t = ` ${text} `;
+  const k = ` ${kw} `;
+  return t.includes(k);
+}
+
 function containsAny(text, list) {
   if (!text) return false;
   for (const kw of list) {
     if (!kw) continue;
-    if (text.includes(kw)) return true;
+    if (includesKeyword(text, kw)) return true;
   }
   return false;
 }
@@ -38,7 +45,7 @@ function scoreByKeywords(text, list) {
   let score = 0;
   for (const kw of list) {
     if (!kw) continue;
-    if (text.includes(kw)) score += 1;
+    if (includesKeyword(text, kw)) score += 1;
   }
   return score;
 }
@@ -184,9 +191,6 @@ const AI_BUSINESS_KEYWORDS = [
   "novabot",
   "نوفا بوت",
   "nova bot",
-  "نوفا لينك",
-  "novalink",
-  "novalink ai",
 
   // محتوى وتسويق
   "توليد المحتوى",
@@ -438,6 +442,16 @@ const THANKS_POSITIVE_KEYWORDS = [
 
 // 4) مزاج سلبي / إحباط
 const NEGATIVE_MOOD_KEYWORDS = [
+    // English negative feedback (common)
+  "not helpful",
+  "this is not helpful",
+  "unhelpful",
+  "useless",
+  "bad answer",
+  "not good",
+  "doesn't help",
+  "does not help",
+  "wrong",
   "محبط",
   "محبطة",
   "تعبان",
@@ -585,6 +599,69 @@ const NOVALINK_INFO_KEYWORDS = [
   "تعريف نوفا بوت",
   "ما هو نوفا بوت"
 ];
+// كلمات قوية تدل أن السؤال "عن نوفا لينك نفسها" (وليس مجرد ذكرها كمصدر)
+const NOVALINK_STRONG_CUES = [
+  "من نحن",
+  "من انتم",
+  "من أنتم",
+  "مين انتو",
+  "مين انتم",
+  "حكيني عن",
+  "عن نوفا لينك",
+  "تعريف",
+  "قصة",
+  "رحلة",
+  "كيف تأسست",
+  "كيف تاسست",
+  "كيف انطلقت",
+  "رؤية",
+  "رسالة",
+  "هدف",
+  "mission",
+  "vision",
+  "about",
+  "who are you",
+  "what is novalink"
+];
+
+// عبارات تشير أن "نوفا لينك" مجرد مرجع/مصدر (وليس موضوع السؤال)
+const NOVALINK_REFERENCE_ONLY_CUES = [
+  "من وجهة نظر",
+  "بحسب",
+  "حسب",
+  "على مدونة",
+  "على موقع",
+  "بناء على",
+  "وفق",
+  "as a",
+  "from the perspective",
+  "according to"
+];
+
+function hasNovaLinkName(cleanText = "") {
+  return (
+    includesKeyword(cleanText, "نوفا لينك") ||
+    includesKeyword(cleanText, "novalink") ||
+    includesKeyword(cleanText, "nova link") ||
+    includesKeyword(cleanText, "novalink ai")
+  );
+}
+
+function detectNovaLinkSubIntent(cleanText = "") {
+  // priority: story -> mission -> vision -> about(default)
+  if (containsAny(cleanText, ["قصة", "رحلة", "كيف تأسست", "كيف تاسست", "كيف انطلقت", "story"])) return "story";
+  if (containsAny(cleanText, ["رسالة", "mission", "هدف"])) return "mission";
+  if (containsAny(cleanText, ["رؤية", "vision"])) return "vision";
+  return "about";
+}
+
+function isNovaLinkReferenceOnly(cleanText = "") {
+  // إذا كانت الرسالة فيها "مرجع فقط" ولا تحتوي مؤشرات تعريف قوية → تعاملها كمرجع لا كنوايا novalink_info
+  if (!hasNovaLinkName(cleanText)) return false;
+  const isRef = containsAny(cleanText, NOVALINK_REFERENCE_ONLY_CUES);
+  const isStrong = containsAny(cleanText, NOVALINK_STRONG_CUES);
+  return isRef && !isStrong;
+}
 
 // 9) كلمات قويّة خارج النطاق (طبخ، جو، سيارات، موضة...)
 //   إذا ظهرت بدون وجود كلمات بزنس → out_of_scope أكيد
@@ -788,16 +865,24 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
   // =========================
   // 3) نوايا تعريف نوفا لينك / نوفا بوت بحتة
   // =========================
-  if (novalinkScore > 0 && aiScore === 0) {
-    return buildResult({
-      intentId: "novalink_info",
-      confidence: 0.9,
-      language,
-      dialectHint,
-      toneHint: "neutral",
-      suggestedCard: null
-    });
+  // novalink_info فقط عندما يكون السؤال "عن نوفا لينك نفسها" (مش مجرد ذكرها كمصدر)
+  if (hasNovaLinkName(clean) && !isNovaLinkReferenceOnly(clean)) {
+    const strongNova = scoreByKeywords(clean, NOVALINK_STRONG_CUES);
+
+    // إذا السؤال فيه مؤشرات تعريف قوية، أو لا يوجد سياق AI/Biz أصلاً → نوصلها لـ novalink_info
+    if (strongNova > 0 || (aiScore === 0 && bizScore === 0)) {
+      return buildResult({
+        intentId: "novalink_info",
+        sub_intent: detectNovaLinkSubIntent(clean),
+        confidence: 0.9,
+        language,
+        dialectHint,
+        toneHint: "neutral",
+        suggestedCard: null
+      });
+    }
   }
+
 
   // =========================
   // 4) استشارة أو شراء خدمة
@@ -840,6 +925,26 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
       suggestedCard: "subscribe"
     });
   }
+  // سلبية + سؤال AI/Biz → نرد "احتواء + جواب" داخل ai_business (بدل negative_mood فقط)
+  if (negativeScore > 0 && (aiScore > 0 || bizScore > 0)) {
+    let conf = 0.7;
+    const combinedScore = aiScore + bizScore;
+    if (combinedScore >= 4) conf = 0.95;
+    else if (combinedScore >= 2) conf = 0.85;
+
+    let suggestedCard = null;
+    if (consultScore > 0) suggestedCard = "bot_lead";
+    else if (subscribeScore > 0) suggestedCard = "business_subscribe";
+
+    return buildResult({
+      intentId: "ai_business",
+      confidence: conf,
+      language,
+      dialectHint,
+      toneHint: "negative",
+      suggestedCard
+    });
+  }
 
   // =========================
   // 7) شكر / إيجابية
@@ -858,7 +963,7 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
   // =========================
   // 8) مزاج سلبي / دعم معنوي
   // =========================
-  if (negativeScore > 0 && aiScore === 0) {
+  if (negativeScore > 0 && aiScore === 0 && bizScore === 0) {
     return buildResult({
       intentId: "negative_mood",
       confidence: 0.9,
@@ -887,15 +992,21 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
   // 10) استفسار عن نوفا لينك + AI معًا
   //      (مثلاً: ما هي نوفا لينك ولماذا أنشئت؟)
   // =========================
-  if (novalinkScore > 0 && aiScore > 0) {
-    return buildResult({
-      intentId: "novalink_info",
-      confidence: 0.9,
-      language,
-      dialectHint,
-      toneHint: "neutral",
-      suggestedCard: null
-    });
+  // إذا ذُكرت نوفا لينك مع AI (مثل: "من وجهة نظر نوفا لينك") لا نحولها تلقائيًا لـ novalink_info
+  // نتركها للـ ai_business، لكن نحافظ على إمكانية novalink_info إذا كانت مؤشرات التعريف قوية جدًا
+  if (hasNovaLinkName(clean) && (aiScore > 0 || bizScore > 0) && !isNovaLinkReferenceOnly(clean)) {
+    const strongNova = scoreByKeywords(clean, NOVALINK_STRONG_CUES);
+    if (strongNova > 0) {
+      return buildResult({
+        intentId: "novalink_info",
+        sub_intent: detectNovaLinkSubIntent(clean),
+        confidence: 0.9,
+        language,
+        dialectHint,
+        toneHint: "neutral",
+        suggestedCard: null
+      });
+    }
   }
 
   // =========================
