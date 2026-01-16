@@ -1011,7 +1011,11 @@ async function callGemini(
 if (!/[.!؟…]$/.test(text)) {
   text = text.replace(/\s+$/g, "") + "…";
 }
-
+            // منع مخاطبة بجنس (فهمتِ/فهمتَ) لأنها تسبب إحراج وتجربة غير مهنية
+      text = text.replace(/\bفهمتِ\b/g, "فهمت");
+      text = text.replace(/\bفهمتَ\b/g, "فهمت");
+      text = text.replace(/\bفهمتي\b/g, "فهمت");
+      text = text.replace(/\bفهمتَ\b/g, "فهمت");
 
       const tailAr = " وإذا احتجت توضيحًا أعمق في نقطة معيّنة، اطلب مني أن أتعمّق فيها أكثر.";
       const tailEn = " If you’d like a deeper explanation on a specific part, just ask me to go deeper on it.";
