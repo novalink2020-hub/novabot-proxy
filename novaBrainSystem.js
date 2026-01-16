@@ -55,9 +55,9 @@ const NOVABOT_TEXT_PACKAGE = {
   mission:
     "🟠 <strong>هدف نوفا لينك</strong><br>🚀 رؤيتنا في نوفا لينك بسيطة لكنها عميقة: أن يصبح الذكاء الاصطناعي أداة لكل إنسان، لا امتيازًا للنخبة التقنية.<br><br>نكتب، نجرّب، ونشاركك الأدوات التي تصنع فارقًا فعليًا في الإنتاجية وريادة الأعمال.<br><br>✨ هدفنا أن تكون أنت التغيير القادم، خطوة بخطوة، بثقة ومعرفة.<br><br>🔗 <a href=\"https://novalink-ai.com/blog-adwat-althkaa-alastnaay-llaamal\" target=\"_blank\" class=\"nova-link\">ابدأ رحلتك العملية</a>",
   vision:
-    "🟣 <strong>رؤية نوفا لينك</strong><br>نطمح إلى مستقبل يصبح فيه الذكاء الاصطناعي ميزة يومية للجميع — يحرّرك من التكرار ويمنحك مساحة أكبر للإبداع واتخاذ القرار، لا للاستهلاك والتشتت."
+    "🟣 <strong>رؤية نوفا لينك</strong><br>نطمح إلى مستقبل يصبح فيه الذكاء الاصطناعي ميزة يومية للجميع — يحرّرك من التكرار ويمنحك مساحة أكبر للإبداع واتخاذ القرار، لا للاستهلاك والتشتت.",
   goodbye:
-    "سعيد بهذه الجولة من الحوار معك 🌱<br><br>أتمنّى أن تكون فكرة واحدة على الأقل قد فتحت لك زاوية جديدة للتفكير أو العمل.<br><br>نوفا بوت سيبقى هنا عندما تعود… ومع كل زيارة، يمكن أن نضيف طبقة جديدة لمسارك مع الذكاء الاصطناعي والأعمال."
+    "سعيد بهذه الجولة من الحوار معك 🌱<br><br>أتمنّى أن تكون فكرة واحدة على الأقل قد فتحت لك زاوية جديدة للتفكير أو العمل.<br><br>نوفا بوت سيبقى هنا عندما تعود… ومع كل زيارة، يمكن أن نضيف طبقة جديدة لمسارك مع الذكاء الاصطناعي والأعمال.",
   // ===== English Pack (Automated Replies) =====
   genericReplies_en: [
     "👋 Welcome to NovaLink. We turn AI into practical outcomes for business and careers.<br>Start here: <a href=\"https://novalink-ai.com/ashtrk-alan\" target=\"_blank\" class=\"nova-link\">Begin</a>",
@@ -681,8 +681,10 @@ function wrapAiAnswerWithLink(aiText, item) {
  </a>`;
 }
 
-function buildAutomatedFallbackReply() {
-  return NOVABOT_TEXT_PACKAGE.noMatch;
+function buildAutomatedFallbackReply(lang = "ar") {
+  return lang === "en"
+    ? (NOVABOT_TEXT_PACKAGE.noMatch_en || "💬 Share your goal and I’ll guide you in a practical direction.")
+    : NOVABOT_TEXT_PACKAGE.noMatch;
 }
 
 function buildGreetingReply(isReturning = false, lang = "ar") {
@@ -703,6 +705,22 @@ function buildThanksPositiveReply(lang = "ar") {
     ? randomFrom(NOVABOT_TEXT_PACKAGE.positiveReplies_en || [])
     : randomFrom(NOVABOT_TEXT_PACKAGE.positiveReplies || []);
 }
+function buildNegativePreface(lang = "ar", dialectHint = "msa") {
+  const d = String(dialectHint || "msa").toLowerCase();
+
+  // Controlled dialect touch (very light)
+  const dialectAr =
+    d.includes("levant") ? "حقّك علينا. " :
+    d.includes("egypt") ? "معاك حق. " :
+    d.includes("gulf") ? "أبشر. " :
+    d.includes("maghreb") ? "سمح لي. " :
+    "";
+
+  if (lang === "en") {
+    return "You’re right to push back — let’s make this actually useful.";
+  }
+  return `${dialectAr}أفهمك تمامًا — خلّيني أعطيك جوابًا أوضح وعمليًا.`;
+}
 
 function buildNegativeMoodReply(lang = "ar") {
   return lang === "en"
@@ -710,8 +728,11 @@ function buildNegativeMoodReply(lang = "ar") {
     : randomFrom(NOVABOT_TEXT_PACKAGE.negativeReplies || []);
 }
 
-function buildSubscribeInterestReply() {
- return `📬 يسعدني حماسك للمتابعة
+function buildSubscribeInterestReply(lang = "ar") {
+  if (lang === "en") {
+    return `📬 Love the momentum.<br>Get focused AI updates from NovaLink — calm, useful, no spam.`;
+  }
+  return `📬 يسعدني حماسك للمتابعة
 بدل التشتت بين عشرات المصادر،
 يمكنك أن تصلك الخلاصة مباشرة — بهدوء، وبدون إزعاج.`;
 }
@@ -722,15 +743,22 @@ function buildBusinessSubscribeReply() {
 هنا نحاول اختصار الطريق، لا تعقيده.`;
 }
 
-function buildConsultingPurchaseReply() {
-return `💬 أغلب المشاريع لا تخسر بسبب ضعف المنتج،
+function buildConsultingPurchaseReply(lang = "ar") {
+  if (lang === "en") {
+    return `💬 Most projects don’t fail because of the product — they fail because the next step is unclear.`;
+  }
+  return `💬 أغلب المشاريع لا تخسر بسبب ضعف المنتج،
 الحل أحيانًا أبسط مما نتوقع.`;
 }
 
-function buildCollaborationReply() {
+function buildCollaborationReply(lang = "ar") {
+  if (lang === "en") {
+    return `🤝 If you’re thinking of a partnership or a serious collaboration idea, use the collaboration card — we’ll get back after review.`;
+  }
   return `🤝 إن كنت تفكّر بتعاون، شراكة، أو فكرة مشتركة ذات قيمة حقيقية،
 استخدم بطاقة التعاون في الواجهة، وسنعود إليك بعد مراجعة الفكرة.`;
 }
+
 
 function buildDeveloperIdentityReply(language = "ar") {
   // العربية هي الافتراضية دائمًا
@@ -742,9 +770,25 @@ return `✨ من المهم أن تعرف من طوّر نوفا بوت و در�
   return `✨ It matters to know who built and trained NovaBot — not out of curiosity, but to build trust.`;
 }
 
-function buildNovaLinkInfoReply() {
+function buildNovaLinkInfoReply(subIntent = "", lang = "ar") {
+  const s = String(subIntent || "").trim().toLowerCase();
+
+  // English
+  if (lang === "en") {
+    if (s === "story") return NOVABOT_TEXT_PACKAGE.story_en;
+    if (s === "mission") return NOVABOT_TEXT_PACKAGE.mission_en;
+    if (s === "vision" || s === "vision_goal" || s === "goal") return NOVABOT_TEXT_PACKAGE.vision_en;
+    return NOVABOT_TEXT_PACKAGE.aboutNovaLink_en;
+  }
+
+  // Arabic
+  if (s === "story") return NOVABOT_TEXT_PACKAGE.story;
+  if (s === "mission") return NOVABOT_TEXT_PACKAGE.mission;
+  if (s === "vision" || s === "vision_goal" || s === "goal") return NOVABOT_TEXT_PACKAGE.vision;
+
   return NOVABOT_TEXT_PACKAGE.aboutNovaLink;
 }
+
 
 function buildNovaBotInfoReply() {
   return `🤖 نوفا بوت هو مساعد دردشة ذكي من منصة نوفا لينك، أقرب إلى "مستشار عملي" منه إلى روبوت أسئلة وأجوبة.<br><br>
@@ -1041,7 +1085,7 @@ export async function novaBrainSystem(request) {
 
   // 0) رد ترحيبي إذا لا يوجد نص
   if (!userText) {
-    return finalizeResponse(getRandomGenericReply(), { matchType: "empty" });
+    return finalizeResponse(getRandomGenericReply(language), { matchType: "empty" });
   }
 
   // 0.1) بطاقة المطوّر
@@ -1056,55 +1100,58 @@ export async function novaBrainSystem(request) {
 
   // 0.2) وداع
   if (isGoodbyeMessage(userText)) {
-    return finalizeResponse(buildGoodbyeReply(), { resetConcepts: true, matchType: "goodbye" });
+    return finalizeResponse(buildGoodbyeReply(language), { resetConcepts: true, matchType: "goodbye" });
   }
 
   // 0.3) خارج النطاق: لا نرجع فورًا إذا كانت سياسة 3 ضربات مفعّلة
   if (originalIntentId === "out_of_scope" && !STRIKES_ENABLED) {
-    return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
+    return finalizeResponse(getRandomGenericReply(language), { matchType: "out_of_scope" });
   }
 
 
   // 1) نوايا ثابتة (طالما لسنا مجبرين على AI)
   if (!forceAI) {
     if (originalIntentId === "greeting") {
-      return finalizeResponse(buildGreetingReply(sessionHistory.length > 0), { matchType: "fixed" });
+return finalizeResponse(buildGreetingReply(sessionHistory.length > 0, language), { matchType: "fixed" });
     }
 
     if (originalIntentId === "thanks_positive") {
-      return finalizeResponse(buildThanksPositiveReply(), {
+      return finalizeResponse(buildThanksPositiveReply(language), {
         actionCard: request.suggestedCard || "subscribe",
         matchType: "fixed"
       });
     }
 
     if (originalIntentId === "negative_mood") {
-      return finalizeResponse(buildNegativeMoodReply(), { matchType: "fixed" });
+      return finalizeResponse(buildNegativeMoodReply(language), { matchType: "fixed" });
     }
 
     if (originalIntentId === "subscribe_interest") {
-      return finalizeResponse(buildSubscribeInterestReply(), {
+      return finalizeResponse(buildSubscribeInterestReply(language), {
         actionCard: request.suggestedCard || "subscribe",
         matchType: "fixed"
       });
     }
 
     if (originalIntentId === "collaboration") {
-      return finalizeResponse(buildCollaborationReply(), {
+      return finalizeResponse(buildCollaborationReply(language), {
         actionCard: request.suggestedCard || "collaboration",
         matchType: "fixed"
       });
     }
 
     if (originalIntentId === "consulting_purchase") {
-      return finalizeResponse(buildConsultingPurchaseReply(), {
+      return finalizeResponse(buildConsultingPurchaseReply(language), {
         actionCard: request.suggestedCard || "bot_lead",
         matchType: "fixed"
       });
     }
 
     if (originalIntentId === "novalink_info") {
-      return finalizeResponse(buildNovaLinkInfoReply(), { matchType: "fixed" });
+return finalizeResponse(
+  buildNovaLinkInfoReply(request.sub_intent || request.subIntent || "", language),
+  { matchType: "fixed" }
+);
     }
 
     if (originalIntentId === "novabot_info") {
@@ -1155,7 +1202,7 @@ export async function novaBrainSystem(request) {
         }
 
         // Strike 3+: رد تحفيزي ثابت من الستة (genericReplies)
-        return finalizeResponse(getRandomGenericReply(), { matchType: "pivot_3" });
+        return finalizeResponse(getRandomGenericReply(language), { matchType: "pivot_3" });
       }
 
       // لو الجلسة AI أو سؤال AI، نكمل طبيعي
@@ -1226,7 +1273,7 @@ export async function novaBrainSystem(request) {
 
   // جلسة غير AI + سؤال غير AI + بدون إجبار → من الردود التحفيزية
   if (!isAISession && !isAIQuestion && !forceAI) {
-    return finalizeResponse(getRandomGenericReply(), { matchType: "out_of_scope" });
+    return finalizeResponse(getRandomGenericReply(language), { matchType: "out_of_scope" });
   }
 
   // كشف طلبات "أكمل / تابع / تعمق"
@@ -1284,19 +1331,22 @@ export async function novaBrainSystem(request) {
         )
       : null;
 
-  if (aiText) {
-    const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
-    return finalizeResponse(safe, {
-      actionCard: request.suggestedCard || null,
-      usedAI: true,
-      geminiUsed: true,
-      matchType: "direct_ai",
-      maxTokens
-    });
-  }
+if (aiText) {
+  const safe = escapeHtml(aiText).replace(/\n/g, "<br>");
+  const needsPreface = String(request.toneHint || "").toLowerCase() === "negative";
+  const preface = needsPreface ? (buildNegativePreface(language, request.dialectHint) + "<br><br>") : "";
+  return finalizeResponse(preface + safe, {
+    actionCard: request.suggestedCard || null,
+    usedAI: true,
+    geminiUsed: true,
+    matchType: "direct_ai",
+    maxTokens
+  });
+}
+
 
   // فشل Gemini بالكامل → fallback (بدون روابط)
-  const fallback = buildAutomatedFallbackReply();
+  const fallback = buildAutomatedFallbackReply(language);
 
   return finalizeResponse(fallback, {
     actionCard: request.suggestedCard || null,
