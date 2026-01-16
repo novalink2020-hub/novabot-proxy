@@ -210,6 +210,14 @@ const AI_BUSINESS_KEYWORDS = [
   "content",
   "copywriting",
   "copy writer",
+    // Content plan / strategy (so "خطة محتوى تسويقي" is in-scope)
+  "خطة محتوى",
+  "خطة تسويق",
+  "خطة تسويقية",
+  "تسويقي",
+  "تسويقية",
+  "content plan",
+  "content strategy",
   "حملات اعلانية",
   "حملات إعلانية",
   "اعلانات ممولة",
@@ -452,6 +460,18 @@ const NEGATIVE_MOOD_KEYWORDS = [
   "doesn't help",
   "does not help",
   "wrong",
+    // Arabic negative feedback (common)
+  "ردك مش مفيد",
+  "ردك غير مفيد",
+  "غير مفيد",
+  "مش مفيد",
+  "مو مفيد",
+  "سيء",
+  "سيء جدا",
+  "رد سيء",
+  "كلام فاضي",
+  "مش عاجبني",
+  "مو عاجبني",
   "محبط",
   "محبطة",
   "تعبان",
@@ -865,6 +885,20 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
   // =========================
   // 3) نوايا تعريف نوفا لينك / نوفا بوت بحتة
   // =========================
+  // تعريف "مين أنتم؟" حتى لو لم يذكر اسم NovaLink صراحة
+  const strongNovaGlobal = scoreByKeywords(clean, NOVALINK_STRONG_CUES);
+  if (strongNovaGlobal > 0) {
+    return buildResult({
+      intentId: "novalink_info",
+      sub_intent: detectNovaLinkSubIntent(clean),
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "neutral",
+      suggestedCard: null
+    });
+  }
+
   // novalink_info فقط عندما يكون السؤال "عن نوفا لينك نفسها" (مش مجرد ذكرها كمصدر)
   if (hasNovaLinkName(clean) && !isNovaLinkReferenceOnly(clean)) {
     const strongNova = scoreByKeywords(clean, NOVALINK_STRONG_CUES);
@@ -882,7 +916,6 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
       });
     }
   }
-
 
   // =========================
   // 4) استشارة أو شراء خدمة
