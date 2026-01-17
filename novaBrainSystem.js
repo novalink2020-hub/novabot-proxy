@@ -1056,11 +1056,17 @@ export async function novaBrainSystem(request) {
   const toneHintLower = String(request.toneHint || "").toLowerCase();
   const suppressBusinessSubscribeCard = toneHintLower === "negative";
 
-  const safeActionCard = (card) => {
-    if (suppressBusinessSubscribeCard && card === "business_subscribe") return null;
-    return card;
-  };
+const safeActionCard = (card) => {
+  const c = String(card || "").trim().toLowerCase();
+  if (!c) return null;
 
+  // أثناء السلبية: امنع أي بطاقة مرتبطة بالأعمال (مهما كان اسمها)
+  if (suppressBusinessSubscribeCard && (c === "business_subscribe" || c.includes("business"))) {
+    return null;
+  }
+
+  return card;
+};
 
   const sessionHistory = Array.isArray(request.recentMessages)
     ? request.recentMessages
@@ -1090,16 +1096,16 @@ export async function novaBrainSystem(request) {
     } = {}
   ) => {
     const extractedConcepts = createConceptList(reply);
-    return {
-      reply,
-      actionCard,
-      usedAI,
-      geminiUsed,
-      matchType,
-      maxTokens,
-      extractedConcepts,
-      resetConcepts
-    };
+return {
+  reply,
+  actionCard: safeActionCard(actionCard),
+  usedAI,
+  geminiUsed,
+  matchType,
+  maxTokens,
+  extractedConcepts,
+  resetConcepts
+};
   };
 
   // 0) رد ترحيبي إذا لا يوجد نص
