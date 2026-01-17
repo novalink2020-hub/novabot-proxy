@@ -1013,7 +1013,6 @@ if (!/[.!؟…]$/.test(text)) {
 }
             // منع مخاطبة بجنس (فهمتِ/فهمتَ) لأنها تسبب إحراج وتجربة غير مهنية
       text = text.replace(/\bفهمتِ\b/g, "فهمت");
-      text = text.replace(/\bفهمتَ\b/g, "فهمت");
       text = text.replace(/\bفهمتي\b/g, "فهمت");
       text = text.replace(/\bفهمتَ\b/g, "فهمت");
 
@@ -1137,7 +1136,7 @@ return finalizeResponse(buildGreetingReply(sessionHistory.length > 0, language),
 
     if (originalIntentId === "thanks_positive") {
       return finalizeResponse(buildThanksPositiveReply(language), {
-        actionCard: request.suggestedCard || "subscribe",
+        actionCard: safeActionCard(request.suggestedCard || "subscribe"),
         matchType: "fixed"
       });
     }
@@ -1148,21 +1147,21 @@ return finalizeResponse(buildGreetingReply(sessionHistory.length > 0, language),
 
     if (originalIntentId === "subscribe_interest") {
       return finalizeResponse(buildSubscribeInterestReply(language), {
-        actionCard: request.suggestedCard || "subscribe",
+        actionCard: safeActionCard(request.suggestedCard || "subscribe"),
         matchType: "fixed"
       });
     }
 
     if (originalIntentId === "collaboration") {
       return finalizeResponse(buildCollaborationReply(language), {
-        actionCard: request.suggestedCard || "collaboration",
+        actionCard: safeActionCard(request.suggestedCard || "collaboration"),
         matchType: "fixed"
       });
     }
 
     if (originalIntentId === "consulting_purchase") {
       return finalizeResponse(buildConsultingPurchaseReply(language), {
-        actionCard: request.suggestedCard || "bot_lead",
+        actionCard: safeActionCard(request.suggestedCard || "bot_lead"),
         matchType: "fixed"
       });
     }
@@ -1283,7 +1282,7 @@ return finalizeResponse(
 
     const replyHtml = buildMidMatchTemplateReply(item);
     return finalizeResponse(replyHtml, {
-      actionCard: request.suggestedCard || null,
+actionCard: safeActionCard(request.suggestedCard || null),
       matchType: "medium_match",
       maxTokens: 0
     });
@@ -1369,7 +1368,7 @@ if (aiText) {
   const fallback = buildAutomatedFallbackReply(language);
 
   return finalizeResponse(fallback, {
-    actionCard: request.suggestedCard || null,
+    actionCard: safeActionCard(request.suggestedCard || null),
     matchType: "fallback",
     maxTokens
   });
