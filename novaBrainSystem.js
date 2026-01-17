@@ -1141,9 +1141,12 @@ return finalizeResponse(buildGreetingReply(sessionHistory.length > 0, language),
       });
     }
 
-    if (originalIntentId === "negative_mood") {
-      return finalizeResponse(buildNegativeMoodReply(language), { matchType: "fixed" });
-    }
+if (originalIntentId === "negative_mood") {
+  return finalizeResponse(buildNegativeMoodReply(language), {
+    actionCard: safeActionCard(request.suggestedCard || null),
+    matchType: "fixed"
+  });
+}
 
     if (originalIntentId === "subscribe_interest") {
       return finalizeResponse(buildSubscribeInterestReply(language), {
