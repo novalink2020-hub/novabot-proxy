@@ -891,35 +891,13 @@ try {
 }
 
       const brainReply = await novaBrainSystem({ message: msg, session_id: publicSessionId, ...analysis });
-      // ============================================================
-      // Card Safety Gate — block business_subscribe in negative/pivot contexts
-      // (حتى لو تسربت من brain/profile لأي سبب)
-      // ============================================================
-      let finalActionCard = brainReply?.actionCard || null;
-
-      const msgLower = String(msg || "").toLowerCase();
-
-      const serverNegativeHint =
-        (analysis?.toneHint === "negative") ||
-        (analysis?.intentId === "negative_mood") ||
-        /not helpful|unhelpful|bad answer|does(?:\s+not|'t)\s+help|ردك مش مفيد|غير مفيد|مش مفيد|مش عاجبني|سيء|رد سيء|محبط|مش نافع/.test(msgLower);
-
-      const serverPivotLike =
-        (analysis?.intentId === "out_of_scope") ||
-        (analysis?.intentId === "casual") ||
-        (analysis?.intentId === "greeting") ||
-        (analysis?.intentId === "thanks_positive");
-
-      if ((serverNegativeHint || serverPivotLike) && finalActionCard === "business_subscribe") {
-        finalActionCard = null;
-      }
 
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(
         JSON.stringify({
           ok: true,
           reply: brainReply?.reply || "",
-          actionCard: finalActionCard,
+          actionCard: brainReply?.actionCard || null,
           session_context: ctx
         })
       );
