@@ -945,55 +945,20 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
     });
   }
 
-   // =========================
+  // =========================
   // 6) اشتراك / نشرة
   // =========================
-  // شرط ذكي: "اشتراك" لا يعني دائمًا نوفا لينك (Spotify/Netflix/ChatGPT...)
-  // لذلك:
-  // - نستثني الخدمات الخارجية
-  // - ونطلب إشارة صريحة لنوفا لينك أو النشرة/التحديثات
   if (subscribeScore > 0 && aiScore === 0 && bizScore === 0) {
-    const externalSubscription =
-      containsAny(clean, [
-        "netflix",
-        "نتفليكس",
-        "spotify",
-        "سبوتيفاي",
-        "chatgpt",
-        "شات جي بي تي",
-        "openai",
-        "يوتيوب",
-        "youtube",
-        "premium",
-        "بريميوم"
-      ]);
-
-    const novalinkSubscriptionCue =
-      hasNovaLinkName(clean) ||
-      containsAny(clean, [
-        "نشرة",
-        "newsletter",
-        "mailing list",
-        "تابع التحديثات",
-        "تحديثات",
-        "email updates",
-        "نشرة نوفا"
-      ]);
-
-    if (!externalSubscription && novalinkSubscriptionCue) {
-      return buildResult({
-        intentId: "subscribe_interest",
-        confidence: 0.9,
-        language,
-        dialectHint,
-        toneHint: "positive",
-        suggestedCard: "subscribe"
-      });
-    }
+    return buildResult({
+      intentId: "subscribe_interest",
+      confidence: 0.9,
+      language,
+      dialectHint,
+      toneHint: "positive",
+      suggestedCard: "subscribe"
+    });
   }
-
-  // سلبية + سؤال AI/Biz → "احتواء + جواب" داخل ai_business (بدل negative_mood فقط)
-  // مهم: لا نقترح business_subscribe في لحظة السلبية إطلاقًا
+  // سلبية + سؤال AI/Biz → نرد "احتواء + جواب" داخل ai_business (بدل negative_mood فقط)
   if (negativeScore > 0 && (aiScore > 0 || bizScore > 0)) {
     let conf = 0.7;
     const combinedScore = aiScore + bizScore;
@@ -1002,6 +967,7 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
 
     let suggestedCard = null;
     if (consultScore > 0) suggestedCard = "bot_lead";
+    else if (subscribeScore > 0) suggestedCard = "business_subscribe";
 
     return buildResult({
       intentId: "ai_business",
@@ -1089,37 +1055,7 @@ let suggestedCard = null;
 if (consultScore > 0) {
   suggestedCard = "bot_lead";
 } else if (subscribeScore > 0) {
-  // لا نقترح business_subscribe إلا إذا كان الاشتراك مرتبطًا بنوفا لينك صراحة
-  const externalSubscription =
-    containsAny(clean, [
-      "netflix",
-      "نتفليكس",
-      "spotify",
-      "سبوتيفاي",
-      "chatgpt",
-      "شات جي بي تي",
-      "openai",
-      "يوتيوب",
-      "youtube",
-      "premium",
-      "بريميوم"
-    ]);
-
-  const novalinkSubscriptionCue =
-    hasNovaLinkName(clean) ||
-    containsAny(clean, [
-      "نشرة",
-      "newsletter",
-      "mailing list",
-      "تابع التحديثات",
-      "تحديثات",
-      "email updates",
-      "نشرة نوفا"
-    ]);
-
-  if (!externalSubscription && novalinkSubscriptionCue) {
-    suggestedCard = "business_subscribe";
-  }
+  suggestedCard = "business_subscribe";
 }
 
     return buildResult({
