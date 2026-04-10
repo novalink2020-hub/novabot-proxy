@@ -357,6 +357,30 @@ function createConceptList(botReplyText = "") {
   return Array.from(concepts).slice(0, 10);
 }
 
+function tokenizeArray(values = []) {
+  const out = new Set();
+  for (const value of values) {
+    const tokens = normalizeText(value).split(" ").filter((w) => w.length >= 2);
+    tokens.forEach((t) => out.add(t));
+  }
+  return out;
+}
+
+function phraseIncludes(text = "", phrase = "") {
+  const a = normalizeText(text);
+  const b = normalizeText(phrase);
+  if (!a || !b) return false;
+  return a.includes(b);
+}
+
+function countPhraseHits(question = "", phrases = []) {
+  let hits = 0;
+  for (const phrase of phrases) {
+    if (phraseIncludes(question, phrase)) hits++;
+  }
+  return hits;
+}
+
 function tokenize(str = "") {
   return new Set(
     normalizeText(str)
@@ -372,16 +396,28 @@ function shouldUseEnglishPreface(text = "") {
 
 function normalizeItem(item) {
   if (!item) return null;
+
+  const normalizedKeywords = Array.isArray(item.keywords)
+    ? item.keywords.map((k) => `${k}`.trim()).filter(Boolean)
+    : [];
+
+  const normalizedTopicKeywords = Array.isArray(item.topic_keywords)
+    ? item.topic_keywords.map((k) => `${k}`.trim()).filter(Boolean)
+    : [];
+
   return {
     title: (item.title || "").trim(),
+    title_clean: (item.title_clean || item.title || "").trim(),
     url: (item.url || "").trim(),
     description: (item.description || "").trim(),
     excerpt: (item.excerpt || "").trim(),
     summary: (item.summary || "").trim(),
+    embedding_text: (item.embedding_text || "").trim(),
     category: (item.category || "general").trim(),
-    keywords: Array.isArray(item.keywords)
-      ? item.keywords.map((k) => normalizeText(k)).filter(Boolean)
-      : []
+    subcategory: (item.subcategory || "").trim(),
+    intent_hint: (item.intent_hint || "").trim(),
+    keywords: normalizedKeywords,
+    topic_keywords: normalizedTopicKeywords
   };
 }
 
@@ -486,14 +522,17 @@ async function ensureKnowledgeEmbeddings(items) {
   console.log("🧠 Building knowledge embeddings for", items.length, "items...");
   const embeddings = [];
   for (const item of items) {
-    const baseText =
-      (item.title || "") +
-      ". " +
-      (item.description || "") +
-      " " +
-      (item.summary || "") +
-      " " +
-      (item.excerpt || "");
+const baseText =
+  item.embedding_text ||
+  (
+    (item.title || "") +
+    ". " +
+    (item.description || "") +
+    " " +
+    (item.summary || "") +
+    " " +
+    (item.excerpt || "")
+  );
     const emb = await embedText(baseText);
     embeddings.push(emb);
   }
@@ -506,35 +545,82 @@ function keywordRoute(question = "", items = []) {
   const q = normalizeText(question);
   if (!q || !items.length) return null;
 
-  const lowerTitle = (t) => normalizeText(t || "");
-  const findByTitleIncludes = (needleList) =>
-    items.find((it) =>
-      needleList.some((n) => lowerTitle(it.title).includes(normalizeText(n)))
-    );
+const scorePhraseMatch = (item, phrases = []) => {
+  const searchable = [
+    item.title || "",
+    item.title_clean || "",
+    ...(item.topic_keywords || []),
+    ...(item.keywords || [])
+  ].join(" | ");
 
-  // Murf / ElevenLabs / Daryjat
+  let score = 0;
+
+  for (const phrase of phrases) {
+    if (phraseIncludes(searchable, phrase)) {
+      score += 1;
+
+      if (phraseIncludes(item.title_clean || item.title || "", phrase)) {
+        score += 1.5;
+      }
+
+      if ((item.topic_keywords || []).some((kw) => phraseIncludes(kw, phrase))) {
+        score += 1;
+      }
+    }
+  }
+
+  return score;
+};
+
+const findByPhrases = (phrases) => {
+  let bestItem = null;
+  let bestScore = 0;
+
+  for (const item of items) {
+    const score = scorePhraseMatch(item, phrases);
+    if (score > bestScore) {
+      bestScore = score;
+      bestItem = item;
+    }
+  }
+
+  return bestItem;
+};
+
   if (
     q.includes("التعليق الصوتي") ||
     q.includes("تعليق صوتي") ||
     q.includes("voice over")
   ) {
-    const target =
-      findByTitleIncludes(["murf", "murf.ai", "daryjat", "elevenlabs"]) || null;
+    const target = findByPhrases(["murf", "murf.ai", "daryjat", "elevenlabs"]);
     if (target) return { item: target, score: 0.98 };
   }
 
-  // Copy.ai
   if (
     q.includes("copy.ai") ||
     q.includes("copy ai") ||
     q.includes("copyai") ||
     q.includes("كوبي")
   ) {
-    const target = findByTitleIncludes(["copy.ai", "copy ai", "copyai"]);
+    const target = findByPhrases(["copy.ai", "copy ai", "copyai"]);
     if (target) return { item: target, score: 0.97 };
   }
 
-  // من نحن / نوفا لينك – لو فاتت النوايا
+  if (
+    q.includes("copilot") ||
+    q.includes("كوبايلوت") ||
+    q.includes("مايكروسوفت كوبايلوت") ||
+    q.includes("microsoft 365 copilot")
+  ) {
+    const target = findByPhrases([
+      "microsoft 365 copilot",
+      "copilot",
+      "مايكروسوفت كوبايلوت",
+      "كوبايلوت"
+    ]);
+    if (target) return { item: target, score: 0.985 };
+  }
+
   if (
     q.includes("من نحن") ||
     q.includes("من انتم") ||
@@ -542,7 +628,7 @@ function keywordRoute(question = "", items = []) {
     q.includes("ما هي نوفا لينك") ||
     q.includes("ما هي novalink")
   ) {
-    const target = findByTitleIncludes(["من نحن", "about", "novalink"]);
+    const target = findByPhrases(["من نحن", "about", "novalink"]);
     if (target) return { item: target, score: 0.95 };
   }
 
@@ -585,16 +671,24 @@ async function findBestMatch(question, items) {
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
 
-    const combined =
-      (item.title || "") +
-      " " +
-      (item.description || "") +
-      " " +
-      (item.excerpt || "") +
-      " " +
-      (item.summary || "");
+const combined =
+  (item.title || "") +
+  " " +
+  (item.title_clean || "") +
+  " " +
+  (item.description || "") +
+  " " +
+  (item.excerpt || "") +
+  " " +
+  (item.summary || "") +
+  " " +
+  (item.embedding_text || "") +
+  " " +
+  (item.topic_keywords || []).join(" ") +
+  " " +
+  (item.keywords || []).join(" ");
 
-    const tTokens = tokenize(combined);
+const tTokens = tokenize(combined);
     if (!tTokens.size) continue;
 
     let common = 0;
@@ -607,36 +701,71 @@ async function findBestMatch(question, items) {
     const unionSize = qTokens.size + tTokens.size - common;
     const jaccard = unionSize > 0 ? common / unionSize : 0;
 
-    const titleTokens = tokenize(item.title || "");
-    let titleCommon = 0;
-    qTokens.forEach((t) => {
-      if (titleTokens.has(t)) titleCommon++;
-    });
-    const titleScore =
-      titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
+const titleTokens = tokenize(item.title_clean || item.title || "");
+let titleCommon = 0;
+qTokens.forEach((t) => {
+  if (titleTokens.has(t)) titleCommon++;
+});
+const titleScore =
+  titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
 
-    const keywordTokens = new Set(item.keywords || []);
-    let keywordCommon = 0;
-    qTokens.forEach((t) => {
-      if (keywordTokens.has(t)) keywordCommon++;
-    });
+const keywordTokens = tokenizeArray(item.keywords || []);
+const topicKeywordTokens = tokenizeArray(item.topic_keywords || []);
 
-    const keywordScore =
-      keywordCommon /
-      Math.max(qTokens.size, Math.min(keywordTokens.size || 1, 3));
+let keywordCommon = 0;
+qTokens.forEach((t) => {
+  if (keywordTokens.has(t) || topicKeywordTokens.has(t)) keywordCommon++;
+});
+
+const keywordScore =
+  keywordCommon /
+  Math.max(qTokens.size, Math.min((keywordTokens.size + topicKeywordTokens.size) || 1, 6));
 
     let semantic = 0;
     if (qEmbedding && knowledgeEmbeddings && knowledgeEmbeddings[idx]) {
       semantic = cosineSimilarity(qEmbedding, knowledgeEmbeddings[idx]);
     }
 
-    const weighted =
-      0.25 * lexicalScore +
-      0.25 * jaccard +
-      0.25 * titleScore +
-      0.15 * keywordScore +
-      0.1 * semantic;
+const exactTitleBoost = phraseIncludes(question, item.title_clean || item.title || "")
+  ? 0.22
+  : 0;
 
+const exactKeywordHits =
+  countPhraseHits(question, item.topic_keywords || []) +
+  countPhraseHits(question, item.keywords || []);
+
+const phraseBoost = Math.min(0.18, exactKeywordHits * 0.06);
+
+const productBoost =
+  (
+    phraseIncludes(question, "microsoft 365 copilot") &&
+    phraseIncludes(combined, "microsoft 365 copilot")
+  ) ||
+  (
+    phraseIncludes(question, "copy.ai") &&
+    phraseIncludes(combined, "copy.ai")
+  ) ||
+  (
+    phraseIncludes(question, "elevenlabs") &&
+    phraseIncludes(combined, "elevenlabs")
+  ) ||
+  (
+    phraseIncludes(question, "murf.ai") &&
+    phraseIncludes(combined, "murf.ai")
+  )
+    ? 0.12
+    : 0;
+
+const weighted =
+  0.20 * lexicalScore +
+  0.15 * jaccard +
+  0.22 * titleScore +
+  0.18 * keywordScore +
+  0.13 * semantic +
+  exactTitleBoost +
+  phraseBoost +
+  productBoost;
+    
     if (weighted > bestScore) {
       bestScore = weighted;
       bestItem = item;
