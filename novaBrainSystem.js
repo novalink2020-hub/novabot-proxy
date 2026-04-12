@@ -603,8 +603,24 @@ const scorePhraseMatch = (item, phrases = []) => {
   const searchable = [
     item.title || "",
     item.title_clean || "",
+    item.description || "",
+    item.excerpt || "",
+    item.summary || "",
     ...(item.topic_keywords || []),
-    ...(item.keywords || [])
+    ...(item.keywords || []),
+    ...(item.entities || []),
+    ...(item.aliases || []),
+    ...(item.misspellings || []),
+    ...(item.faq_queries_human || []),
+    ...(item.answer_scope || []),
+    item.novalink_knowledge?.article_title || "",
+    item.novalink_knowledge?.article_description || "",
+    item.novalink_knowledge?.primary_topic || "",
+    ...(item.novalink_knowledge?.entities || []),
+    ...(item.novalink_knowledge?.aliases || []),
+    ...(item.novalink_knowledge?.misspellings || []),
+    ...(item.novalink_knowledge?.faq_queries_human || []),
+    ...(item.novalink_knowledge?.answer_scope || [])
   ].join(" | ");
 
   let score = 0;
@@ -619,6 +635,26 @@ const scorePhraseMatch = (item, phrases = []) => {
 
       if ((item.topic_keywords || []).some((kw) => phraseIncludes(kw, phrase))) {
         score += 1;
+      }
+
+      if ((item.aliases || []).some((kw) => phraseIncludes(kw, phrase))) {
+        score += 1;
+      }
+
+      if ((item.faq_queries_human || []).some((kw) => phraseIncludes(kw, phrase))) {
+        score += 1.25;
+      }
+
+      if ((item.entities || []).some((kw) => phraseIncludes(kw, phrase))) {
+        score += 0.75;
+      }
+
+      if (
+        item.novalink_knowledge &&
+        Array.isArray(item.novalink_knowledge.faq_queries_human) &&
+        item.novalink_knowledge.faq_queries_human.some((kw) => phraseIncludes(kw, phrase))
+      ) {
+        score += 1.25;
       }
     }
   }
