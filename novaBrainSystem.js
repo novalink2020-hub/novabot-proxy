@@ -405,6 +405,52 @@ function normalizeItem(item) {
     ? item.topic_keywords.map((k) => `${k}`.trim()).filter(Boolean)
     : [];
 
+  const normalizedEntities = Array.isArray(item.entities)
+    ? item.entities.map((x) => `${x}`.trim()).filter(Boolean)
+    : [];
+
+  const normalizedAliases = Array.isArray(item.aliases)
+    ? item.aliases.map((x) => `${x}`.trim()).filter(Boolean)
+    : [];
+
+  const normalizedMisspellings = Array.isArray(item.misspellings)
+    ? item.misspellings.map((x) => `${x}`.trim()).filter(Boolean)
+    : [];
+
+  const normalizedFaqQueriesHuman = Array.isArray(item.faq_queries_human)
+    ? item.faq_queries_human.map((x) => `${x}`.trim()).filter(Boolean)
+    : [];
+
+  const normalizedAnswerScope = Array.isArray(item.answer_scope)
+    ? item.answer_scope.map((x) => `${x}`.trim()).filter(Boolean)
+    : [];
+
+  const normalizedNovaLinkKnowledge =
+    item.novalink_knowledge && typeof item.novalink_knowledge === "object"
+      ? {
+          article_title: `${item.novalink_knowledge.article_title || ""}`.trim(),
+          article_description: `${item.novalink_knowledge.article_description || ""}`.trim(),
+          article_slug: `${item.novalink_knowledge.article_slug || ""}`.trim(),
+          primary_topic: `${item.novalink_knowledge.primary_topic || ""}`.trim(),
+          search_intent: `${item.novalink_knowledge.search_intent || ""}`.trim(),
+          entities: Array.isArray(item.novalink_knowledge.entities)
+            ? item.novalink_knowledge.entities.map((x) => `${x}`.trim()).filter(Boolean)
+            : [],
+          aliases: Array.isArray(item.novalink_knowledge.aliases)
+            ? item.novalink_knowledge.aliases.map((x) => `${x}`.trim()).filter(Boolean)
+            : [],
+          misspellings: Array.isArray(item.novalink_knowledge.misspellings)
+            ? item.novalink_knowledge.misspellings.map((x) => `${x}`.trim()).filter(Boolean)
+            : [],
+          faq_queries_human: Array.isArray(item.novalink_knowledge.faq_queries_human)
+            ? item.novalink_knowledge.faq_queries_human.map((x) => `${x}`.trim()).filter(Boolean)
+            : [],
+          answer_scope: Array.isArray(item.novalink_knowledge.answer_scope)
+            ? item.novalink_knowledge.answer_scope.map((x) => `${x}`.trim()).filter(Boolean)
+            : []
+        }
+      : null;
+
   return {
     title: (item.title || "").trim(),
     title_clean: (item.title_clean || item.title || "").trim(),
@@ -416,8 +462,16 @@ function normalizeItem(item) {
     category: (item.category || "general").trim(),
     subcategory: (item.subcategory || "").trim(),
     intent_hint: (item.intent_hint || "").trim(),
+    search_intent: (item.search_intent || "").trim(),
+    article_slug: (item.article_slug || "").trim(),
     keywords: normalizedKeywords,
-    topic_keywords: normalizedTopicKeywords
+    topic_keywords: normalizedTopicKeywords,
+    entities: normalizedEntities,
+    aliases: normalizedAliases,
+    misspellings: normalizedMisspellings,
+    faq_queries_human: normalizedFaqQueriesHuman,
+    answer_scope: normalizedAnswerScope,
+    novalink_knowledge: normalizedNovaLinkKnowledge
   };
 }
 
