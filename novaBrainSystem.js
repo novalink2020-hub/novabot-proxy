@@ -520,7 +520,12 @@ async function embedText(text = "") {
     return values.map((v) => v / norm);
   } catch (err) {
     const msg = String(err?.message || "");
-    if (msg.includes("404") || msg.includes("not found") || msg.includes("not supported")) {
+
+    if (
+      msg.includes("404") ||
+      msg.includes("not found") ||
+      msg.includes("not supported")
+    ) {
       embeddingsDisabled = true;
       console.warn("⚠️ Embeddings disabled: model unavailable for current API/version.");
       return null;
