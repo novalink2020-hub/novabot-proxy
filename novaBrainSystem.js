@@ -570,61 +570,83 @@ function keywordRoute(question = "", items = []) {
   const q = normalizeText(question);
   if (!q || !items.length) return null;
 
-  const scorePhraseMatch = (item, phrase = "") => {
-    const normalizedPhrase = normalizeText(phrase);
-    if (!normalizedPhrase || normalizedPhrase.length < 3) return 0;
+  const qTokens = new Set(
+    q.split(" ").filter((t) => t && t.length >= 3 && !ARABIC_STOPWORDS.has(t) && !EN_STOPWORDS.has(t))
+  );
+  if (!qTokens.size) return null;
 
-    const titleValue = item.title_clean || item.title || "";
-    const entities = item.entities || [];
-    const aliases = item.aliases || [];
-    const misspellings = item.misspellings || [];
-    const faqQueries = item.faq_queries_human || [];
-    const topicKeywords = item.topic_keywords || [];
-    const keywords = item.keywords || [];
-    const keywordsExtended = item.keywords_extended || [];
+  const tokenOverlapScore = (phrase = "") => {
+    const pTokens = Array.from(
+      new Set(
+        normalizeText(phrase)
+          .split(" ")
+          .filter((t) => t && t.length >= 3 && !ARABIC_STOPWORDS.has(t) && !EN_STOPWORDS.has(t))
+      )
+    );
 
-    let score = 0;
+    if (!pTokens.length) return 0;
 
-    if (phraseIncludes(titleValue, normalizedPhrase)) score += 4.0;
-    if (entities.some((v) => phraseIncludes(v, normalizedPhrase))) score += 3.2;
-    if (aliases.some((v) => phraseIncludes(v, normalizedPhrase))) score += 2.8;
-    if (misspellings.some((v) => phraseIncludes(v, normalizedPhrase))) score += 2.2;
-    if (faqQueries.some((v) => phraseIncludes(v, normalizedPhrase))) score += 2.0;
-    if (topicKeywords.some((v) => phraseIncludes(v, normalizedPhrase))) score += 1.8;
-    if (keywords.some((v) => phraseIncludes(v, normalizedPhrase))) score += 1.5;
-    if (keywordsExtended.some((v) => phraseIncludes(v, normalizedPhrase))) score += 1.3;
+    let overlap = 0;
+    for (const token of pTokens) {
+      if (qTokens.has(token)) overlap++;
+    }
 
-    return score;
+    if (!overlap) return 0;
+
+    const ratio = overlap / pTokens.length;
+    if (overlap >= 2) return ratio;
+    if (pTokens.length === 1 && overlap === 1) return 0.9;
+    return ratio >= 0.6 ? ratio : 0;
+  };
+
+  const scoreFieldGroup = (phrases = [], weight = 1) => {
+    let best = 0;
+
+    for (const rawPhrase of phrases) {
+      const phrase = `${rawPhrase || ""}`.trim();
+      if (!phrase) continue;
+
+      const normalizedPhrase = normalizeText(phrase);
+      if (!normalizedPhrase || normalizedPhrase.length < 3) continue;
+
+      let score = 0;
+
+      if (phraseIncludes(q, normalizedPhrase)) {
+        score = 1.2;
+      } else if (phraseIncludes(normalizedPhrase, q) && q.length >= 5) {
+        score = 1.0;
+      } else {
+        score = tokenOverlapScore(normalizedPhrase);
+      }
+
+      if (score > best) best = score;
+    }
+
+    return best * weight;
   };
 
   let bestItem = null;
   let bestScore = 0;
 
   for (const item of items) {
-    const candidatePhrases = [
-      item.title,
-      item.title_clean,
-      ...(item.entities || []),
-      ...(item.aliases || []),
-      ...(item.misspellings || []),
-      ...(item.faq_queries_human || []),
-      ...(item.topic_keywords || []),
-      ...(item.keywords || []),
-      ...(item.keywords_extended || [])
-    ]
-      .map((v) => `${v || ""}`.trim())
-      .filter((v) => v && normalizeText(v).length >= 3);
+    const titlePhrases = [item.title, item.title_clean];
+    const entityPhrases = item.entities || [];
+    const aliasPhrases = item.aliases || [];
+    const misspellingPhrases = item.misspellings || [];
+    const faqPhrases = item.faq_queries_human || [];
+    const topicPhrases = item.topic_keywords || [];
+    const keywordPhrases = item.keywords || [];
+    const keywordExtendedPhrases = item.keywords_extended || [];
 
-    let itemScore = 0;
-
-    for (const phrase of candidatePhrases) {
-      const normalizedPhrase = normalizeText(phrase);
-      if (!normalizedPhrase) continue;
-
-      if (phraseIncludes(q, normalizedPhrase)) {
-        itemScore += scorePhraseMatch(item, phrase);
-      }
-    }
+    const itemScore =
+      scoreFieldGroup(titlePhrases, 4.0) +
+      scoreFieldGroup(entityPhrases, 3.2) +
+      scoreFieldGroup(aliasPhrases, 2.8) +
+      scoreFieldGroup(misspellingPhrases, 2.2) +
+      scoreFieldGroup(faqPhrases, 2.4) +
+      scoreFieldGroup(topicPhrases, 1.8) +
+      scoreFieldGroup(keywordPhrases, 1.5) +
+      scoreFieldGroup(keywordExtendedPhrases, 1.3);
 
     if (itemScore > bestScore) {
       bestScore = itemScore;
@@ -632,7 +654,7 @@ function keywordRoute(question = "", items = []) {
     }
   }
 
-  if (!bestItem || bestScore < 2.5) return null;
+  if (!bestItem || bestScore < 2.2) return null;
 
   const routedScore = Math.min(0.985, 0.90 + Math.min(0.08, bestScore * 0.01));
   return { item: bestItem, score: routedScore };
