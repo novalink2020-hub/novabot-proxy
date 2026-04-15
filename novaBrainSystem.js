@@ -481,14 +481,6 @@ export async function loadKnowledgeFromURL(url) {
   knowledgeCache = null;
   knowledgeEmbeddings = null;
   const kb = await loadKnowledgeBase();
-  console.log("KB CHECK FIRST LOCATION:", {
-  entities: kb?.[0]?.entities,
-  aliases: kb?.[0]?.aliases,
-  misspellings: kb?.[0]?.misspellings,
-  faq_queries_human: kb?.[0]?.faq_queries_human,
-  answer_scope: kb?.[0]?.answer_scope,
-  keywords_extended: kb?.[0]?.keywords_extended
-});
   return kb.length;
 }
 
@@ -1394,14 +1386,6 @@ return finalizeResponse(
 
   if (allowKnowledge) {
     const kb = await loadKnowledgeBase();
-    console.log("KB CHECK SECOND LOCATION:", {
-  entities: kb?.[0]?.entities,
-  aliases: kb?.[0]?.aliases,
-  misspellings: kb?.[0]?.misspellings,
-  faq_queries_human: kb?.[0]?.faq_queries_human,
-  answer_scope: kb?.[0]?.answer_scope,
-  keywords_extended: kb?.[0]?.keywords_extended
-});
     if (kb.length) {
       bestMatch = await findBestMatch(userText, kb);
     }
