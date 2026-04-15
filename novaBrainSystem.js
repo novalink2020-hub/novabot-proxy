@@ -566,49 +566,59 @@ function keywordRoute(question = "", items = []) {
   const q = normalizeText(question);
   if (!q || !items.length) return null;
 
-const scorePhraseMatch = (item, phrases = []) => {
-  const searchable = [
-    item.title || "",
-    item.title_clean || "",
-    ...(item.topic_keywords || []),
-    ...(item.keywords || [])
-  ].join(" | ");
+  const scorePhraseMatch = (item, phrases = []) => {
+    const searchable = [
+      item.title || "",
+      item.title_clean || "",
+      ...(item.topic_keywords || []),
+      ...(item.keywords || []),
+      ...(item.keywords_extended || []),
+      ...(item.entities || []),
+      ...(item.aliases || [])
+    ].join(" | ");
 
-  let score = 0;
+    let score = 0;
 
-  for (const phrase of phrases) {
-    if (phraseIncludes(searchable, phrase)) {
-      score += 1;
-
-      if (phraseIncludes(item.title_clean || item.title || "", phrase)) {
-        score += 1.5;
-      }
-
-      if ((item.topic_keywords || []).some((kw) => phraseIncludes(kw, phrase))) {
+    for (const phrase of phrases) {
+      if (phraseIncludes(searchable, phrase)) {
         score += 1;
+
+        if (phraseIncludes(item.title_clean || item.title || "", phrase)) {
+          score += 1.5;
+        }
+
+        if ((item.topic_keywords || []).some((kw) => phraseIncludes(kw, phrase))) {
+          score += 1;
+        }
+
+        if ((item.entities || []).some((kw) => phraseIncludes(kw, phrase))) {
+          score += 1.2;
+        }
+
+        if ((item.aliases || []).some((kw) => phraseIncludes(kw, phrase))) {
+          score += 1.1;
+        }
       }
     }
-  }
 
-  return score;
-};
+    return score;
+  };
 
-const findByPhrases = (phrases) => {
-  let bestItem = null;
-  let bestScore = 0;
+  const findByPhrases = (phrases) => {
+    let bestItem = null;
+    let bestScore = 0;
 
-  for (const item of items) {
-    const score = scorePhraseMatch(item, phrases);
-    if (score > bestScore) {
-      bestScore = score;
-      bestItem = item;
+    for (const item of items) {
+      const score = scorePhraseMatch(item, phrases);
+      if (score > bestScore) {
+        bestScore = score;
+        bestItem = item;
+      }
     }
-  }
 
-  return bestItem;
-};
+    return bestItem;
+  };
 
-  if (
   const isVoiceOverQuery =
     /(^|\s)(voice\s*over)(\s|$)/i.test(q) ||
     /(^|\s)(تعليق صوتي|التعليق الصوتي|للتعليق الصوتي|بالتعليق الصوتي)(\s|$)/i.test(q) ||
