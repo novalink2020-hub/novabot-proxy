@@ -397,13 +397,18 @@ function shouldUseEnglishPreface(text = "") {
 function normalizeItem(item) {
   if (!item) return null;
 
-  const normalizedKeywords = Array.isArray(item.keywords)
-    ? item.keywords.map((k) => `${k}`.trim()).filter(Boolean)
-    : [];
+  const normalizeStringArray = (value) =>
+    Array.isArray(value)
+      ? value.map((v) => `${v}`.trim()).filter(Boolean)
+      : [];
 
-  const normalizedTopicKeywords = Array.isArray(item.topic_keywords)
-    ? item.topic_keywords.map((k) => `${k}`.trim()).filter(Boolean)
-    : [];
+  const normalizedKeywords = normalizeStringArray(item.keywords);
+  const normalizedKeywordsExtended = normalizeStringArray(item.keywords_extended);
+  const normalizedTopicKeywords = normalizeStringArray(item.topic_keywords);
+  const normalizedEntities = normalizeStringArray(item.entities);
+  const normalizedAliases = normalizeStringArray(item.aliases);
+  const normalizedMisspellings = normalizeStringArray(item.misspellings);
+  const normalizedFaqQueriesHuman = normalizeStringArray(item.faq_queries_human);
 
   return {
     title: (item.title || "").trim(),
@@ -413,11 +418,17 @@ function normalizeItem(item) {
     excerpt: (item.excerpt || "").trim(),
     summary: (item.summary || "").trim(),
     embedding_text: (item.embedding_text || "").trim(),
+    answer_scope: (item.answer_scope || "").trim(),
     category: (item.category || "general").trim(),
     subcategory: (item.subcategory || "").trim(),
     intent_hint: (item.intent_hint || "").trim(),
     keywords: normalizedKeywords,
-    topic_keywords: normalizedTopicKeywords
+    keywords_extended: normalizedKeywordsExtended,
+    topic_keywords: normalizedTopicKeywords,
+    entities: normalizedEntities,
+    aliases: normalizedAliases,
+    misspellings: normalizedMisspellings,
+    faq_queries_human: normalizedFaqQueriesHuman
   };
 }
 
