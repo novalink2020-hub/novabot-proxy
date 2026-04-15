@@ -26,9 +26,47 @@ function normalize(str = "") {
 
 function includesKeyword(text, kw) {
   if (!text || !kw) return false;
-  const t = ` ${text} `;
-  const k = ` ${kw} `;
-  return t.includes(k);
+
+  const t = normalize(text);
+  const k = normalize(kw);
+
+  if (!t || !k) return false;
+
+  // 1) مطابقة العبارة الكاملة كما هي
+  if (` ${t} `.includes(` ${k} `)) return true;
+
+  // 2) مطابقة مرنة لعبارات طويلة أو علامات منتجات
+  // تفيد في: microsoft 365 copilot / voice over / تعليق صوتي
+  if (k.length >= 8 && t.includes(k)) return true;
+
+  // 3) تطبيع عربي خفيف لإزالة اللواصق الشائعة:
+  // ال، و، ف، ب، ك، ل، لل
+  const normalizeArabicLoose = (value = "") =>
+    normalize(value)
+      .split(" ")
+      .filter(Boolean)
+      .map((token) =>
+        token
+          .replace(/^لل/, "")
+          .replace(/^[وفبكل]/, "")
+          .replace(/^ال/, "")
+      )
+      .filter(Boolean)
+      .join(" ");
+
+  const looseText = normalizeArabicLoose(t);
+  const looseKw = normalizeArabicLoose(k);
+
+  if (!looseText || !looseKw) return false;
+
+  if (` ${looseText} `.includes(` ${looseKw} `)) return true;
+
+  // 4) fallback لعبارات من كلمتين فأكثر بعد التطبيع المرن
+  if (looseKw.includes(" ") && looseKw.length >= 6 && looseText.includes(looseKw)) {
+    return true;
+  }
+
+  return false;
 }
 
 function containsAny(text, list) {
