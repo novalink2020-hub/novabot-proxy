@@ -221,6 +221,7 @@ const KNOWLEDGE_TTL_MS = 12 * 60 * 60 * 1000; // 12 ساعة
 
 let knowledgeEmbeddings = null; // Array<float[] | null>
 let embedModel = null;
+let embeddingsDisabled = false;
 
 // تهيئة عميل Gemini
 let genAI = null;
@@ -495,6 +496,8 @@ async function ensureEmbedModel() {
 }
 
 async function embedText(text = "") {
+  if (embeddingsDisabled) return null;
+
   try {
     const model = await ensureEmbedModel();
     if (!model) return null;
@@ -516,7 +519,14 @@ async function embedText(text = "") {
     const norm = Math.sqrt(values.reduce((s, v) => s + v * v, 0)) || 1;
     return values.map((v) => v / norm);
   } catch (err) {
-    console.warn("⚠️ embedText error:", err.message);
+    const msg = String(err?.message || "");
+    if (msg.includes("404") || msg.includes("not found") || msg.includes("not supported")) {
+      embeddingsDisabled = true;
+      console.warn("⚠️ Embeddings disabled: model unavailable for current API/version.");
+      return null;
+    }
+
+    console.warn("⚠️ embedText error:", msg);
     return null;
   }
 }
@@ -599,11 +609,21 @@ const findByPhrases = (phrases) => {
 };
 
   if (
-    q.includes("التعليق الصوتي") ||
-    q.includes("تعليق صوتي") ||
-    q.includes("voice over")
-  ) {
-    const target = findByPhrases(["murf", "murf.ai", "daryjat", "elevenlabs"]);
+  const isVoiceOverQuery =
+    /(^|\s)(voice\s*over)(\s|$)/i.test(q) ||
+    /(^|\s)(تعليق صوتي|التعليق الصوتي|للتعليق الصوتي|بالتعليق الصوتي)(\s|$)/i.test(q) ||
+    (q.includes("صوتي") && (q.includes("تعليق") || q.includes("تعليقًا") || q.includes("تعليقا")));
+
+  if (isVoiceOverQuery) {
+    const target = findByPhrases([
+      "murf",
+      "murf.ai",
+      "daryjat",
+      "elevenlabs",
+      "تعليق صوتي",
+      "التعليق الصوتي",
+      "voice over"
+    ]);
     if (target) return { item: target, score: 0.98 };
   }
 
