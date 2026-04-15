@@ -662,6 +662,7 @@ async function findBestMatch(question, items) {
     return { score: 0, item: null };
   }
 
+  const normalizedQuestion = normalizeText(question);
   const qTokens = tokenize(question);
   if (!qTokens.size) return { score: 0, item: null };
 
@@ -674,7 +675,37 @@ async function findBestMatch(question, items) {
 
   await ensureKnowledgeEmbeddings(items);
   const qEmbedding = await embedText(question);
-  const isShortQuery = qTokens.size <= 2;
+
+  const genericQuestionTokens = new Set(
+    [...qTokens].filter(
+      (token) =>
+        token.length <= 2 ||
+        ARABIC_STOPWORDS.has(token) ||
+        EN_STOPWORDS.has(token) ||
+        [
+          "ai",
+          "artificial",
+          "intelligence",
+          "ذكاء",
+          "الذكاء",
+          "اصطناعي",
+          "الاصطناعي",
+          "أداة",
+          "اداة",
+          "أدوات",
+          "ادوات",
+          "business",
+          "عمل",
+          "الأعمال",
+          "الاعمال",
+          "شركة",
+          "شركات",
+          "productivity",
+          "انتاجية",
+          "إنتاجية"
+        ].includes(token)
+    )
+  );
 
   let bestItem = null;
   let bestScore = 0;
@@ -682,103 +713,163 @@ async function findBestMatch(question, items) {
   for (let idx = 0; idx < items.length; idx++) {
     const item = items[idx];
 
-const combined =
-  (item.title || "") +
-  " " +
-  (item.title_clean || "") +
-  " " +
-  (item.description || "") +
-  " " +
-  (item.excerpt || "") +
-  " " +
-  (item.summary || "") +
-  " " +
-  (item.embedding_text || "") +
-  " " +
-  (item.topic_keywords || []).join(" ") +
-  " " +
-  (item.keywords || []).join(" ");
+    const titleValue = item.title_clean || item.title || "";
+    const entityPhrases = item.entities || [];
+    const aliasPhrases = item.aliases || [];
+    const misspellingPhrases = item.misspellings || [];
+    const faqPhrases = item.faq_queries_human || [];
+    const keywordPhrases = item.keywords || [];
+    const keywordExtendedPhrases = item.keywords_extended || [];
+    const topicPhrases = item.topic_keywords || [];
 
-const tTokens = tokenize(combined);
+    const combined =
+      (item.title || "") +
+      " " +
+      (item.title_clean || "") +
+      " " +
+      (item.description || "") +
+      " " +
+      (item.excerpt || "") +
+      " " +
+      (item.summary || "") +
+      " " +
+      (item.embedding_text || "") +
+      " " +
+      (item.answer_scope || "") +
+      " " +
+      entityPhrases.join(" ") +
+      " " +
+      aliasPhrases.join(" ") +
+      " " +
+      misspellingPhrases.join(" ") +
+      " " +
+      faqPhrases.join(" ") +
+      " " +
+      topicPhrases.join(" ") +
+      " " +
+      keywordPhrases.join(" ") +
+      " " +
+      keywordExtendedPhrases.join(" ");
+
+    const tTokens = tokenize(combined);
     if (!tTokens.size) continue;
 
     let common = 0;
+    let genericOverlap = 0;
+
     qTokens.forEach((t) => {
-      if (tTokens.has(t)) common++;
+      if (tTokens.has(t)) {
+        common++;
+        if (genericQuestionTokens.has(t)) genericOverlap++;
+      }
     });
 
-    const lexicalScore = common / Math.max(qTokens.size, isShortQuery ? 1 : 3);
-
+    const lexicalScore = common / Math.max(qTokens.size, 3);
     const unionSize = qTokens.size + tTokens.size - common;
     const jaccard = unionSize > 0 ? common / unionSize : 0;
 
-const titleTokens = tokenize(item.title_clean || item.title || "");
-let titleCommon = 0;
-qTokens.forEach((t) => {
-  if (titleTokens.has(t)) titleCommon++;
-});
-const titleScore =
-  titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
+    const titleTokens = tokenize(titleValue);
+    let titleCommon = 0;
+    qTokens.forEach((t) => {
+      if (titleTokens.has(t)) titleCommon++;
+    });
+    const titleScore =
+      titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
 
-const keywordTokens = tokenizeArray(item.keywords || []);
-const topicKeywordTokens = tokenizeArray(item.topic_keywords || []);
+    const entityHits = countPhraseHits(question, entityPhrases);
+    const aliasHits = countPhraseHits(question, aliasPhrases);
+    const misspellingHits = countPhraseHits(question, misspellingPhrases);
+    const faqHits = countPhraseHits(question, faqPhrases);
+    const topicHits = countPhraseHits(question, topicPhrases);
+    const keywordHits = countPhraseHits(question, keywordPhrases);
+    const keywordExtendedHits = countPhraseHits(question, keywordExtendedPhrases);
 
-let keywordCommon = 0;
-qTokens.forEach((t) => {
-  if (keywordTokens.has(t) || topicKeywordTokens.has(t)) keywordCommon++;
-});
+    const exactTitleHit = phraseIncludes(question, titleValue) ? 1 : 0;
+    const titleContainsQuestion =
+      normalizedQuestion && normalizeText(titleValue).includes(normalizedQuestion) ? 1 : 0;
 
-const keywordScore =
-  keywordCommon /
-  Math.max(qTokens.size, Math.min((keywordTokens.size + topicKeywordTokens.size) || 1, 6));
+    const keywordTokens = tokenizeArray(keywordPhrases);
+    const topicKeywordTokens = tokenizeArray(topicPhrases);
+    const keywordExtendedTokens = tokenizeArray(keywordExtendedPhrases);
+    const aliasTokens = tokenizeArray(aliasPhrases);
+    const entityTokens = tokenizeArray(entityPhrases);
+
+    let keywordCommon = 0;
+    qTokens.forEach((t) => {
+      if (
+        keywordTokens.has(t) ||
+        topicKeywordTokens.has(t) ||
+        keywordExtendedTokens.has(t) ||
+        aliasTokens.has(t) ||
+        entityTokens.has(t)
+      ) {
+        keywordCommon++;
+      }
+    });
+
+    const keywordScore =
+      keywordCommon /
+      Math.max(
+        qTokens.size,
+        Math.min(
+          (
+            keywordTokens.size +
+            topicKeywordTokens.size +
+            keywordExtendedTokens.size +
+            aliasTokens.size +
+            entityTokens.size
+          ) || 1,
+          8
+        )
+      );
 
     let semantic = 0;
     if (qEmbedding && knowledgeEmbeddings && knowledgeEmbeddings[idx]) {
       semantic = cosineSimilarity(qEmbedding, knowledgeEmbeddings[idx]);
     }
 
-const exactTitleBoost = phraseIncludes(question, item.title_clean || item.title || "")
-  ? 0.22
-  : 0;
+    const exactEvidence =
+      exactTitleHit +
+      titleContainsQuestion +
+      entityHits * 1.4 +
+      aliasHits * 1.15 +
+      misspellingHits * 1.1 +
+      faqHits * 0.9;
 
-const exactKeywordHits =
-  countPhraseHits(question, item.topic_keywords || []) +
-  countPhraseHits(question, item.keywords || []);
+    const topicEvidence = topicHits * 0.55 + keywordHits * 0.4 + keywordExtendedHits * 0.3;
 
-const phraseBoost = Math.min(0.18, exactKeywordHits * 0.06);
+    const genericPenalty =
+      common > 0 ? Math.min(0.22, (genericOverlap / common) * 0.22) : 0;
 
-const productBoost =
-  (
-    phraseIncludes(question, "microsoft 365 copilot") &&
-    phraseIncludes(combined, "microsoft 365 copilot")
-  ) ||
-  (
-    phraseIncludes(question, "copy.ai") &&
-    phraseIncludes(combined, "copy.ai")
-  ) ||
-  (
-    phraseIncludes(question, "elevenlabs") &&
-    phraseIncludes(combined, "elevenlabs")
-  ) ||
-  (
-    phraseIncludes(question, "murf.ai") &&
-    phraseIncludes(combined, "murf.ai")
-  )
-    ? 0.12
-    : 0;
+    const weakEvidencePenalty =
+      exactEvidence === 0 && topicEvidence > 0 && semantic < 0.56 ? 0.14 : 0;
 
-const weighted =
-  0.20 * lexicalScore +
-  0.15 * jaccard +
-  0.22 * titleScore +
-  0.18 * keywordScore +
-  0.13 * semantic +
-  exactTitleBoost +
-  phraseBoost +
-  productBoost;
-    
-    if (weighted > bestScore) {
-      bestScore = weighted;
+    const weighted =
+      0.17 * lexicalScore +
+      0.08 * jaccard +
+      0.22 * titleScore +
+      0.16 * keywordScore +
+      0.09 * semantic +
+      Math.min(0.34, exactEvidence * 0.08) +
+      Math.min(0.12, topicEvidence * 0.035) -
+      genericPenalty -
+      weakEvidencePenalty;
+
+    const hasStrongEvidence =
+      exactTitleHit > 0 ||
+      titleContainsQuestion > 0 ||
+      entityHits > 0 ||
+      aliasHits > 0 ||
+      misspellingHits > 0 ||
+      faqHits > 0;
+
+    const finalScore =
+      hasStrongEvidence
+        ? weighted
+        : Math.min(weighted, 0.62);
+
+    if (finalScore > bestScore) {
+      bestScore = finalScore;
       bestItem = item;
     }
   }
