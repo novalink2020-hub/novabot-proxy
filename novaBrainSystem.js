@@ -1143,6 +1143,21 @@ function detectAISession(currentIntentId, sessionHistory = []) {
   });
 }
 
+function countRecentAIReplies(sessionHistory = []) {
+  const msgs = Array.isArray(sessionHistory) ? sessionHistory : [];
+
+  return msgs
+    .filter((m) => {
+      if (!m) return false;
+      if (m.role !== "assistant" && m.role !== "bot" && m.role !== "model") return false;
+      if (m.geminiUsed === true || m.usedAI === true) return true;
+
+      const mt = String(m.matchType || "").toLowerCase();
+      return mt === "direct_ai" || mt === "medium_match" || mt.startsWith("pivot_");
+    })
+    .slice(-3).length;
+}
+
 /* =============== استدعاء Gemini =============== */
 
 function buildGeminiPrompt(
@@ -1589,19 +1604,33 @@ actionCard: safeActionCard(request.suggestedCard || null),
     followupEn.some((kw) => lower.includes(kw));
 
   // جدول maxTokens وفق السياسة + تكييف القوة
+  const recentAICount = countRecentAIReplies(sessionHistory);
+
   let baseTokens = isAISession ? (isAIQuestion ? 200 : 100) : 0;
   if (!allowGemini) {
     baseTokens = 0;
   }
+
+  // استعادة سلوك السقف المتناقص:
+  // 0 = أول رد AI
+  // 1 = ثاني رد AI
+  // 2+ = fallback تحفيزي بدل Gemini
+  if (recentAICount === 1) {
+    baseTokens = Math.min(baseTokens, isAIQuestion ? 120 : 80);
+  } else if (recentAICount >= 2) {
+    baseTokens = 0;
+  }
+
   let maxTokens = baseTokens;
   if (baseTokens > 0) {
     if (sessionTier === "strong_ai") {
-      maxTokens = Math.min(200, baseTokens + 60);
+      maxTokens = Math.min(maxTokens, baseTokens + 20);
     } else if (sessionTier === "semi_ai") {
-      maxTokens = Math.min(180, baseTokens + 30);
+      maxTokens = Math.min(maxTokens, baseTokens + 10);
     }
+
     if (topicTransition === "soft_switch") {
-      maxTokens = Math.max(80, Math.round(maxTokens * 0.8));
+      maxTokens = Math.max(60, Math.round(maxTokens * 0.8));
     }
     if (topicTransition === "hard_switch" && !request.contextFollowing) {
       maxTokens = Math.round(maxTokens * 0.6);
@@ -1609,7 +1638,7 @@ actionCard: safeActionCard(request.suggestedCard || null),
 
     const wordCount = normalizeText(userText).split(" ").filter(Boolean).length;
     if (wordCount > 0 && wordCount <= 8) {
-      maxTokens = Math.max(60, maxTokens - 40);
+      maxTokens = Math.max(50, maxTokens - 30);
     }
   }
 
