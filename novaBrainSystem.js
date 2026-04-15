@@ -1518,7 +1518,7 @@ return finalizeResponse(
   if (item && score >= STRONG_MATCH_THRESHOLD) {
     const replyHtml = buildStrongMatchReply(item);
     return finalizeResponse(replyHtml, {
-      actionCard: safeActionCard(request.suggestedCard || null),
+      actionCard: null,
       matchType: "strong_match",
       maxTokens: 0
     });
