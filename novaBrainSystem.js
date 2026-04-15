@@ -247,7 +247,6 @@ const STRIKES_MAX = 3;
 
 // sessionKey => { count:number, updatedAt:number }
 const strikeStore = new Map();
-const aiTurnStore = new Map();
 function getBrainSessionKey(req = {}) {
   // نحاول نأخذ session_id (أفضل) أو أي مفتاح يرسله السيرفر لاحقًا
   const s =
@@ -270,25 +269,6 @@ function bumpStrike(sessionKey) {
   const next = { count: Math.min(prev.count + 1, STRIKES_MAX), updatedAt: Date.now() };
   strikeStore.set(sessionKey, next);
   return next.count;
-}
-
-function getAITurnCount(sessionKey) {
-  if (!sessionKey) return 0;
-  const state = aiTurnStore.get(sessionKey) || { count: 0, updatedAt: 0 };
-  return state.count || 0;
-}
-
-function bumpAITurn(sessionKey) {
-  if (!sessionKey) return 0;
-  const prev = aiTurnStore.get(sessionKey) || { count: 0, updatedAt: 0 };
-  const next = { count: Math.min(prev.count + 1, 3), updatedAt: Date.now() };
-  aiTurnStore.set(sessionKey, next);
-  return next.count;
-}
-
-function resetAITurns(sessionKey) {
-  if (!sessionKey) return;
-  aiTurnStore.set(sessionKey, { count: 0, updatedAt: Date.now() });
 }
 
 // Pivot templates (fallback لو Gemini فشل/مغلق)
@@ -1382,8 +1362,6 @@ const safeActionCard = (card) => {
   // لو دخل المستخدم في نطاق AI الحقيقي، نصفر الضربات
   if (STRIKES_ENABLED && (effectiveIntentId === "ai_business" || originalIntentId === "ai_business")) {
     resetStrikes(brainSessionKey);
-  } else {
-    resetAITurns(brainSessionKey);
   }
 
   const finalizeResponse = (
@@ -1397,19 +1375,6 @@ const safeActionCard = (card) => {
       geminiUsed = false
     } = {}
   ) => {
-    if (geminiUsed || usedAI) {
-      bumpAITurn(brainSessionKey);
-    } else if (
-      matchType === "fixed" ||
-      matchType === "fallback" ||
-      matchType === "out_of_scope" ||
-      matchType === "goodbye" ||
-      matchType === "empty" ||
-      matchType === "pivot_3"
-    ) {
-      resetAITurns(brainSessionKey);
-    }
-
     const extractedConcepts = createConceptList(reply);
 return {
   reply,
@@ -1638,10 +1603,7 @@ actionCard: safeActionCard(request.suggestedCard || null),
     followupEn.some((kw) => lower.includes(kw));
 
   // جدول maxTokens وفق السياسة + تكييف القوة
-  const recentAICount = Math.max(
-    countRecentAIReplies(sessionHistory),
-    getAITurnCount(brainSessionKey)
-  );
+  const recentAICount = countRecentAIReplies(sessionHistory);
 
   let baseTokens = isAISession ? (isAIQuestion ? 200 : 100) : 0;
   if (!allowGemini) {
@@ -1653,7 +1615,7 @@ actionCard: safeActionCard(request.suggestedCard || null),
   // 1 = ثاني رد AI
   // 2+ = fallback تحفيزي بدل Gemini
   if (recentAICount === 1) {
-    baseTokens = Math.min(baseTokens, isAIQuestion ? 110 : 75);
+    baseTokens = Math.min(baseTokens, isAIQuestion ? 120 : 80);
   } else if (recentAICount >= 2) {
     baseTokens = 0;
   }
