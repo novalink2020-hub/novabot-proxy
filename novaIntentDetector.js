@@ -229,7 +229,12 @@ const AI_BUSINESS_KEYWORDS = [
   "novabot",
   "نوفا بوت",
   "nova bot",
-
+  "copilot",
+  "كوبايلوت",
+  "كوبايلوت",
+  "مايكروسوفت كوبايلوت",
+  "microsoft copilot",
+  "microsoft 365 copilot",
   // محتوى وتسويق
   "توليد المحتوى",
   "توليد نصوص",
@@ -937,12 +942,31 @@ const buildResult = (payload) => ({ ...payload, intent: payload?.intentId || nul
     });
   }
 
-  // novalink_info فقط عندما يكون السؤال "عن نوفا لينك نفسها" (مش مجرد ذكرها كمصدر)
+  // novalink_info فقط عندما يكون السؤال "عن نوفا لينك نفسها" (مش مجرد ذكرها كمصدر أو كناشر محتوى)
   if (hasNovaLinkName(clean) && !isNovaLinkReferenceOnly(clean)) {
     const strongNova = scoreByKeywords(clean, NOVALINK_STRONG_CUES);
+    const contentDiscoveryCues = scoreByKeywords(clean, [
+      "هل كتبت",
+      "كتبت",
+      "مقال",
+      "مقالات",
+      "تدوينة",
+      "تدوينات",
+      "مدونة",
+      "موضوع",
+      "عن موضوع",
+      "عن",
+      "تناولت",
+      "نشرت",
+      "نشرتوا",
+      "عندكم",
+      "لديكم",
+      "هل لديكم",
+      "هل عندكم"
+    ]);
 
-    // إذا السؤال فيه مؤشرات تعريف قوية، أو لا يوجد سياق AI/Biz أصلاً → نوصلها لـ novalink_info
-    if (strongNova > 0 || (aiScore === 0 && bizScore === 0)) {
+    // لا نحولها إلى novalink_info إذا كانت الجملة تسأل عن محتوى/تدوينات منشورة
+    if (strongNova > 0 && contentDiscoveryCues === 0) {
       return buildResult({
         intentId: "novalink_info",
         sub_intent: detectNovaLinkSubIntent(clean),
