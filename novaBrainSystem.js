@@ -570,114 +570,72 @@ function keywordRoute(question = "", items = []) {
   const q = normalizeText(question);
   if (!q || !items.length) return null;
 
-  const scorePhraseMatch = (item, phrases = []) => {
-    const searchable = [
-      item.title || "",
-      item.title_clean || "",
-      ...(item.topic_keywords || []),
-      ...(item.keywords || []),
-      ...(item.keywords_extended || []),
-      ...(item.entities || []),
-      ...(item.aliases || [])
-    ].join(" | ");
+  const scorePhraseMatch = (item, phrase = "") => {
+    const normalizedPhrase = normalizeText(phrase);
+    if (!normalizedPhrase || normalizedPhrase.length < 3) return 0;
+
+    const titleValue = item.title_clean || item.title || "";
+    const entities = item.entities || [];
+    const aliases = item.aliases || [];
+    const misspellings = item.misspellings || [];
+    const faqQueries = item.faq_queries_human || [];
+    const topicKeywords = item.topic_keywords || [];
+    const keywords = item.keywords || [];
+    const keywordsExtended = item.keywords_extended || [];
 
     let score = 0;
 
-    for (const phrase of phrases) {
-      if (phraseIncludes(searchable, phrase)) {
-        score += 1;
-
-        if (phraseIncludes(item.title_clean || item.title || "", phrase)) {
-          score += 1.5;
-        }
-
-        if ((item.topic_keywords || []).some((kw) => phraseIncludes(kw, phrase))) {
-          score += 1;
-        }
-
-        if ((item.entities || []).some((kw) => phraseIncludes(kw, phrase))) {
-          score += 1.2;
-        }
-
-        if ((item.aliases || []).some((kw) => phraseIncludes(kw, phrase))) {
-          score += 1.1;
-        }
-      }
-    }
+    if (phraseIncludes(titleValue, normalizedPhrase)) score += 4.0;
+    if (entities.some((v) => phraseIncludes(v, normalizedPhrase))) score += 3.2;
+    if (aliases.some((v) => phraseIncludes(v, normalizedPhrase))) score += 2.8;
+    if (misspellings.some((v) => phraseIncludes(v, normalizedPhrase))) score += 2.2;
+    if (faqQueries.some((v) => phraseIncludes(v, normalizedPhrase))) score += 2.0;
+    if (topicKeywords.some((v) => phraseIncludes(v, normalizedPhrase))) score += 1.8;
+    if (keywords.some((v) => phraseIncludes(v, normalizedPhrase))) score += 1.5;
+    if (keywordsExtended.some((v) => phraseIncludes(v, normalizedPhrase))) score += 1.3;
 
     return score;
   };
 
-  const findByPhrases = (phrases) => {
-    let bestItem = null;
-    let bestScore = 0;
+  let bestItem = null;
+  let bestScore = 0;
 
-    for (const item of items) {
-      const score = scorePhraseMatch(item, phrases);
-      if (score > bestScore) {
-        bestScore = score;
-        bestItem = item;
+  for (const item of items) {
+    const candidatePhrases = [
+      item.title,
+      item.title_clean,
+      ...(item.entities || []),
+      ...(item.aliases || []),
+      ...(item.misspellings || []),
+      ...(item.faq_queries_human || []),
+      ...(item.topic_keywords || []),
+      ...(item.keywords || []),
+      ...(item.keywords_extended || [])
+    ]
+      .map((v) => `${v || ""}`.trim())
+      .filter((v) => v && normalizeText(v).length >= 3);
+
+    let itemScore = 0;
+
+    for (const phrase of candidatePhrases) {
+      const normalizedPhrase = normalizeText(phrase);
+      if (!normalizedPhrase) continue;
+
+      if (phraseIncludes(q, normalizedPhrase)) {
+        itemScore += scorePhraseMatch(item, phrase);
       }
     }
 
-    return bestItem;
-  };
-
-  const isVoiceOverQuery =
-    /(^|\s)(voice\s*over)(\s|$)/i.test(q) ||
-    /(^|\s)(تعليق صوتي|التعليق الصوتي|للتعليق الصوتي|بالتعليق الصوتي)(\s|$)/i.test(q) ||
-    (q.includes("صوتي") && (q.includes("تعليق") || q.includes("تعليقًا") || q.includes("تعليقا")));
-
-  if (isVoiceOverQuery) {
-    const target = findByPhrases([
-      "murf",
-      "murf.ai",
-      "daryjat",
-      "elevenlabs",
-      "تعليق صوتي",
-      "التعليق الصوتي",
-      "voice over"
-    ]);
-    if (target) return { item: target, score: 0.98 };
+    if (itemScore > bestScore) {
+      bestScore = itemScore;
+      bestItem = item;
+    }
   }
 
-  if (
-    q.includes("copy.ai") ||
-    q.includes("copy ai") ||
-    q.includes("copyai") ||
-    q.includes("كوبي")
-  ) {
-    const target = findByPhrases(["copy.ai", "copy ai", "copyai"]);
-    if (target) return { item: target, score: 0.97 };
-  }
+  if (!bestItem || bestScore < 2.5) return null;
 
-  if (
-    q.includes("copilot") ||
-    q.includes("كوبايلوت") ||
-    q.includes("مايكروسوفت كوبايلوت") ||
-    q.includes("microsoft 365 copilot")
-  ) {
-    const target = findByPhrases([
-      "microsoft 365 copilot",
-      "copilot",
-      "مايكروسوفت كوبايلوت",
-      "كوبايلوت"
-    ]);
-    if (target) return { item: target, score: 0.985 };
-  }
-
-  if (
-    q.includes("من نحن") ||
-    q.includes("من انتم") ||
-    q.includes("من أنتم") ||
-    q.includes("ما هي نوفا لينك") ||
-    q.includes("ما هي novalink")
-  ) {
-    const target = findByPhrases(["من نحن", "about", "novalink"]);
-    if (target) return { item: target, score: 0.95 };
-  }
-
-  return null;
+  const routedScore = Math.min(0.985, 0.90 + Math.min(0.08, bestScore * 0.01));
+  return { item: bestItem, score: routedScore };
 }
 
 /* =============== حساب التطابق مع المعرفة =============== */
