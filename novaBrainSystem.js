@@ -445,6 +445,85 @@ function isDirectArticleCoverage(question = "", item = null) {
 
   return directEvidence >= 1.2;
 }
+
+function pickBestMediumLinkItem(question = "", items = [], fallbackItem = null) {
+  if (!question || !Array.isArray(items) || !items.length) return fallbackItem;
+
+  const q = extractDirectCoverageQuestion(question);
+  const qTokens = tokenize(q);
+  if (!qTokens.size) return fallbackItem;
+
+  let bestItem = null;
+  let bestScore = 0;
+
+  for (const item of items) {
+    const titleValue = item.title_clean || item.title || "";
+    const entityPhrases = item.entities || [];
+    const aliasPhrases = item.aliases || [];
+    const misspellingPhrases = item.misspellings || [];
+    const faqPhrases = item.faq_queries_human || [];
+    const topicPhrases = item.topic_keywords || [];
+    const keywordPhrases = item.keywords || [];
+    const keywordExtendedPhrases = item.keywords_extended || [];
+
+    const exactTitleHit = phraseIncludes(q, titleValue) ? 1 : 0;
+    const titleContainsQuestion =
+      normalizeText(titleValue).includes(q) && q.length >= 5 ? 1 : 0;
+
+    const entityHits = countPhraseHits(q, entityPhrases);
+    const aliasHits = countPhraseHits(q, aliasPhrases);
+    const misspellingHits = countPhraseHits(q, misspellingPhrases);
+    const faqHits = countPhraseHits(q, faqPhrases);
+    const topicHits = countPhraseHits(q, topicPhrases);
+    const keywordHits = countPhraseHits(q, keywordPhrases);
+    const keywordExtendedHits = countPhraseHits(q, keywordExtendedPhrases);
+
+    const titleTokens = tokenize(titleValue);
+    let titleOverlap = 0;
+    qTokens.forEach((t) => {
+      if (titleTokens.has(t)) titleOverlap++;
+    });
+
+    const titleOverlapScore =
+      titleOverlap / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
+
+    const directScore =
+      exactTitleHit * 3.0 +
+      titleContainsQuestion * 2.5 +
+      entityHits * 1.8 +
+      aliasHits * 1.5 +
+      misspellingHits * 1.2 +
+      faqHits * 1.4 +
+      titleOverlapScore * 1.2;
+
+    const supportScore =
+      topicHits * 0.55 +
+      keywordHits * 0.35 +
+      keywordExtendedHits * 0.2;
+
+    const broadPenalty =
+      exactTitleHit === 0 &&
+      entityHits === 0 &&
+      aliasHits === 0 &&
+      faqHits === 0 &&
+      (topicHits > 0 || keywordHits > 0 || keywordExtendedHits > 0)
+        ? 0.9
+        : 0;
+
+    const finalScore = directScore + supportScore - broadPenalty;
+
+    if (finalScore > bestScore) {
+      bestScore = finalScore;
+      bestItem = item;
+    }
+  }
+
+  if (!bestItem || bestScore < 1.15) {
+    return fallbackItem;
+  }
+
+  return bestItem;
+}
 function shouldUseEnglishPreface(text = "") {
   return /[a-zA-Z]/.test(text);
 }
@@ -1560,10 +1639,12 @@ return finalizeResponse(
   const allowKnowledge = allowGemini;
 
   let bestMatch = { score: 0, item: null };
+  let knowledgeItems = [];
 
   if (allowKnowledge) {
     const kb = await loadKnowledgeBase();
     if (kb.length) {
+      knowledgeItems = kb;
       bestMatch = await findBestMatch(userText, kb);
     }
   }
@@ -1587,13 +1668,15 @@ return finalizeResponse(
 
   // 2-ب) تطابق متوسط → Gemini قصير + رابط (maxTokens = 100)
   if (item && score >= MEDIUM_MATCH_THRESHOLD) {
+    const mediumLinkItem = pickBestMediumLinkItem(userText, knowledgeItems, item);
+
     const aiText =
       allowGemini && (effectiveIntentId === "ai_business" || isAISession || forceAI)
         ? await callGemini(
 
             userText,
             { ...request, sessionTier, contextFollowing: request.contextFollowing, topicTransition },
-            item,
+            mediumLinkItem,
             false,
             100,
             sessionConcepts
@@ -1601,7 +1684,7 @@ return finalizeResponse(
         : null;
 
     if (aiText) {
-      const replyHtml = wrapAiAnswerWithLink(aiText, item);
+      const replyHtml = wrapAiAnswerWithLink(aiText, mediumLinkItem || item);
       return finalizeResponse(replyHtml, {
         actionCard: safeActionCard(request.suggestedCard || null),
         usedAI: true,
@@ -1611,7 +1694,7 @@ return finalizeResponse(
       });
     }
 
-    const replyHtml = buildMidMatchTemplateReply(item);
+    const replyHtml = buildMidMatchTemplateReply(mediumLinkItem || item);
     return finalizeResponse(replyHtml, {
 actionCard: safeActionCard(request.suggestedCard || null),
       matchType: "medium_match",
