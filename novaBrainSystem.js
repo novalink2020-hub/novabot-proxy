@@ -902,39 +902,39 @@ async function findBestMatch(question, items) {
       genericPenalty -
       weakEvidencePenalty;
 
-    const hasStrongEvidence =
-      exactTitleHit > 0 ||
-      titleContainsQuestion > 0 ||
-      entityHits > 0 ||
-      aliasHits > 0 ||
-      misspellingHits > 0 ||
-      faqHits > 0;
+    const directCoverageEvidence =
+      exactTitleHit * 2.2 +
+      titleContainsQuestion * 2.0 +
+      entityHits * 1.5 +
+      aliasHits * 1.2 +
+      misspellingHits * 1.0 +
+      faqHits * 1.1;
 
-    const hasExactTopicAnchor =
-      exactTitleHit > 0 ||
-      titleContainsQuestion > 0 ||
-      entityHits > 0 ||
-      aliasHits > 0 ||
-      faqHits > 0;
+    const relatedCoverageEvidence =
+      topicHits * 0.7 +
+      keywordHits * 0.55 +
+      keywordExtendedHits * 0.4 +
+      titleScore * 0.8 +
+      keywordScore * 0.6;
 
-    const isGenericQuestion =
-      exactEvidence === 0 &&
-      (
-        qTokens.size <= 4 ||
-        (topicEvidence > 0 && titleScore < 0.34 && keywordScore < 0.42)
-      );
+    const isShortOrGeneralQuestion =
+      qTokens.size <= 4 ||
+      (exactTitleHit === 0 && entityHits === 0 && aliasHits === 0 && faqHits === 0);
 
     let finalScore = weighted;
 
-    if (!hasStrongEvidence) {
+    // direct coverage only: allow strong candidates to stay strong
+    if (directCoverageEvidence < 1.2) {
+      finalScore = Math.min(finalScore, 0.63);
+    }
+
+    // related but not direct: keep article as medium, not strong
+    if (directCoverageEvidence < 2.0 && relatedCoverageEvidence > 0) {
       finalScore = Math.min(finalScore, 0.62);
     }
 
-    if (!hasExactTopicAnchor && weighted < 0.78) {
-      finalScore = Math.min(finalScore, 0.61);
-    }
-
-    if (isGenericQuestion && !hasExactTopicAnchor) {
+    // broad/general in-scope questions should lean away from forced article replies
+    if (isShortOrGeneralQuestion && directCoverageEvidence < 2.2) {
       finalScore = Math.min(finalScore, 0.58);
     }
 
