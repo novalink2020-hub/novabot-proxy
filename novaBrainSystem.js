@@ -388,38 +388,6 @@ function tokenize(str = "") {
       .filter((w) => w.length >= 3)
   );
 }
-
-function extractContentDiscoveryTopic(question = "") {
-  const original = `${question || ""}`.trim();
-  const normalized = normalizeText(original);
-  if (!normalized) return original;
-
-  const prefixes = [
-    "هل كتبت نوفا لينك عن",
-    "هل كتبت novalink عن",
-    "هل كتبت عن",
-    "هل لدى نوفا لينك مقال عن",
-    "هل لديكم مقال عن",
-    "هل عندكم مقال عن",
-    "هل لديكم تدوينة عن",
-    "هل عندكم تدوينة عن",
-    "هل تناولت نوفا لينك",
-    "هل تناولتم",
-    "هل نشرت نوفا لينك",
-    "هل نشرتم",
-    "هل تحدثت نوفا لينك عن",
-    "هل تحدثتم عن"
-  ];
-
-  for (const prefix of prefixes) {
-    if (normalized.startsWith(prefix)) {
-      const extracted = normalized.slice(prefix.length).trim();
-      if (extracted.length >= 4) return extracted;
-    }
-  }
-
-  return normalized;
-}
 function shouldUseEnglishPreface(text = "") {
   return /[a-zA-Z]/.test(text);
 }
@@ -670,22 +638,15 @@ function keywordRoute(question = "", items = []) {
     const keywordPhrases = item.keywords || [];
     const keywordExtendedPhrases = item.keywords_extended || [];
 
-    const directAnchorScore =
+    const itemScore =
       scoreFieldGroup(titlePhrases, 4.0) +
       scoreFieldGroup(entityPhrases, 3.2) +
       scoreFieldGroup(aliasPhrases, 2.8) +
       scoreFieldGroup(misspellingPhrases, 2.2) +
-      scoreFieldGroup(faqPhrases, 2.4);
-
-    const supportScore =
-      scoreFieldGroup(topicPhrases, 1.2) +
-      scoreFieldGroup(keywordPhrases, 0.9) +
-      scoreFieldGroup(keywordExtendedPhrases, 0.7);
-
-    // لا نسمح للمسار السريع أن يعمل إذا لم توجد مرساة مباشرة
-    if (directAnchorScore <= 0) continue;
-
-    const itemScore = directAnchorScore + Math.min(1.4, supportScore);
+      scoreFieldGroup(faqPhrases, 2.4) +
+      scoreFieldGroup(topicPhrases, 1.8) +
+      scoreFieldGroup(keywordPhrases, 1.5) +
+      scoreFieldGroup(keywordExtendedPhrases, 1.3);
 
     if (itemScore > bestScore) {
       bestScore = itemScore;
@@ -693,10 +654,9 @@ function keywordRoute(question = "", items = []) {
     }
   }
 
-  // strong keyword routing فقط عندما تكون هناك أدلة مباشرة كافية
-  if (!bestItem || bestScore < 2.6) return null;
+  if (!bestItem || bestScore < 2.2) return null;
 
-  const routedScore = Math.min(0.975, 0.90 + Math.min(0.06, bestScore * 0.01));
+  const routedScore = Math.min(0.985, 0.90 + Math.min(0.08, bestScore * 0.01));
   return { item: bestItem, score: routedScore };
 }
 
@@ -716,20 +676,19 @@ async function findBestMatch(question, items) {
     return { score: 0, item: null };
   }
 
-  const retrievalQuestion = extractContentDiscoveryTopic(question);
-  const normalizedQuestion = normalizeText(retrievalQuestion);
-  const qTokens = tokenize(retrievalQuestion);
+  const normalizedQuestion = normalizeText(question);
+  const qTokens = tokenize(question);
   if (!qTokens.size) return { score: 0, item: null };
 
   // Keyword routing أولًا
-  const routed = keywordRoute(retrievalQuestion, items);
+  const routed = keywordRoute(question, items);
   if (routed) {
     console.log("🎯 Keyword route hit →", routed.item.url);
     return routed;
   }
 
   await ensureKnowledgeEmbeddings(items);
-  const qEmbedding = await embedText(retrievalQuestion);
+  const qEmbedding = await embedText(question);
 
   const genericQuestionTokens = new Set(
     [...qTokens].filter(
@@ -831,15 +790,15 @@ async function findBestMatch(question, items) {
     const titleScore =
       titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
 
-    const entityHits = countPhraseHits(retrievalQuestion, entityPhrases);
-    const aliasHits = countPhraseHits(retrievalQuestion, aliasPhrases);
-    const misspellingHits = countPhraseHits(retrievalQuestion, misspellingPhrases);
-    const faqHits = countPhraseHits(retrievalQuestion, faqPhrases);
-    const topicHits = countPhraseHits(retrievalQuestion, topicPhrases);
-    const keywordHits = countPhraseHits(retrievalQuestion, keywordPhrases);
-    const keywordExtendedHits = countPhraseHits(retrievalQuestion, keywordExtendedPhrases);
+    const entityHits = countPhraseHits(question, entityPhrases);
+    const aliasHits = countPhraseHits(question, aliasPhrases);
+    const misspellingHits = countPhraseHits(question, misspellingPhrases);
+    const faqHits = countPhraseHits(question, faqPhrases);
+    const topicHits = countPhraseHits(question, topicPhrases);
+    const keywordHits = countPhraseHits(question, keywordPhrases);
+    const keywordExtendedHits = countPhraseHits(question, keywordExtendedPhrases);
 
-    const exactTitleHit = phraseIncludes(retrievalQuestion, titleValue) ? 1 : 0;
+    const exactTitleHit = phraseIncludes(question, titleValue) ? 1 : 0;
     const titleContainsQuestion =
       normalizedQuestion && normalizeText(titleValue).includes(normalizedQuestion) ? 1 : 0;
 
@@ -918,33 +877,10 @@ async function findBestMatch(question, items) {
       misspellingHits > 0 ||
       faqHits > 0;
 
-    const hasExactTopicAnchor =
-      exactTitleHit > 0 ||
-      titleContainsQuestion > 0 ||
-      entityHits > 0 ||
-      aliasHits > 0 ||
-      faqHits > 0;
-
-    const isGenericQuestion =
-      exactEvidence === 0 &&
-      (
-        qTokens.size <= 4 ||
-        (topicEvidence > 0 && titleScore < 0.34 && keywordScore < 0.42)
-      );
-
-    let finalScore = weighted;
-
-    if (!hasStrongEvidence) {
-      finalScore = Math.min(finalScore, 0.62);
-    }
-
-    if (!hasExactTopicAnchor && weighted < 0.78) {
-      finalScore = Math.min(finalScore, 0.61);
-    }
-
-    if (isGenericQuestion && !hasExactTopicAnchor) {
-      finalScore = Math.min(finalScore, 0.58);
-    }
+    const finalScore =
+      hasStrongEvidence
+        ? weighted
+        : Math.min(weighted, 0.62);
 
     if (finalScore > bestScore) {
       bestScore = finalScore;
