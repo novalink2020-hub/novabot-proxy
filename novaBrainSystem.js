@@ -910,10 +910,33 @@ async function findBestMatch(question, items) {
       misspellingHits > 0 ||
       faqHits > 0;
 
-    const finalScore =
-      hasStrongEvidence
-        ? weighted
-        : Math.min(weighted, 0.62);
+    const hasExactTopicAnchor =
+      exactTitleHit > 0 ||
+      titleContainsQuestion > 0 ||
+      entityHits > 0 ||
+      aliasHits > 0 ||
+      faqHits > 0;
+
+    const isGenericQuestion =
+      exactEvidence === 0 &&
+      (
+        qTokens.size <= 4 ||
+        (topicEvidence > 0 && titleScore < 0.34 && keywordScore < 0.42)
+      );
+
+    let finalScore = weighted;
+
+    if (!hasStrongEvidence) {
+      finalScore = Math.min(finalScore, 0.62);
+    }
+
+    if (!hasExactTopicAnchor && weighted < 0.78) {
+      finalScore = Math.min(finalScore, 0.61);
+    }
+
+    if (isGenericQuestion && !hasExactTopicAnchor) {
+      finalScore = Math.min(finalScore, 0.58);
+    }
 
     if (finalScore > bestScore) {
       bestScore = finalScore;
