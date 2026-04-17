@@ -388,6 +388,63 @@ function tokenize(str = "") {
       .filter((w) => w.length >= 3)
   );
 }
+
+function extractDirectCoverageQuestion(question = "") {
+  const normalized = normalizeText(question || "");
+  if (!normalized) return "";
+
+  const prefixes = [
+    "هل كتبت نوفا لينك عن",
+    "هل كتبت عن",
+    "هل لديكم مقال عن",
+    "هل عندكم مقال عن",
+    "هل لديكم تدوينة عن",
+    "هل عندكم تدوينة عن",
+    "هل نشرت نوفا لينك عن",
+    "هل تحدثت نوفا لينك عن"
+  ];
+
+  for (const prefix of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      const rest = normalized.slice(prefix.length).trim();
+      if (rest.length >= 4) return rest;
+    }
+  }
+
+  return normalized;
+}
+
+function isDirectArticleCoverage(question = "", item = null) {
+  if (!question || !item) return false;
+
+  const q = extractDirectCoverageQuestion(question);
+  if (!q) return false;
+
+  const titleValue = item.title_clean || item.title || "";
+  const entityPhrases = item.entities || [];
+  const aliasPhrases = item.aliases || [];
+  const misspellingPhrases = item.misspellings || [];
+  const faqPhrases = item.faq_queries_human || [];
+
+  const exactTitleHit = phraseIncludes(q, titleValue);
+  const titleContainsQuestion =
+    normalizeText(titleValue).includes(q) && q.length >= 5;
+
+  const entityHits = countPhraseHits(q, entityPhrases);
+  const aliasHits = countPhraseHits(q, aliasPhrases);
+  const misspellingHits = countPhraseHits(q, misspellingPhrases);
+  const faqHits = countPhraseHits(q, faqPhrases);
+
+  const directEvidence =
+    (exactTitleHit ? 2.2 : 0) +
+    (titleContainsQuestion ? 1.8 : 0) +
+    entityHits * 1.5 +
+    aliasHits * 1.2 +
+    misspellingHits * 1.0 +
+    faqHits * 1.1;
+
+  return directEvidence >= 1.2;
+}
 function shouldUseEnglishPreface(text = "") {
   return /[a-zA-Z]/.test(text);
 }
@@ -1514,7 +1571,12 @@ return finalizeResponse(
   const { score, item } = bestMatch;
 
   // 2-أ) تطابق قوي → رد مؤتمت + رابط فقط (بدون Gemini)
-  if (item && score >= STRONG_MATCH_THRESHOLD) {
+  const canUseStrongMatch =
+    item &&
+    score >= STRONG_MATCH_THRESHOLD &&
+    isDirectArticleCoverage(userText, item);
+
+  if (canUseStrongMatch) {
     const replyHtml = buildStrongMatchReply(item);
     return finalizeResponse(replyHtml, {
       actionCard: null,
