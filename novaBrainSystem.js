@@ -708,19 +708,20 @@ async function findBestMatch(question, items) {
     return { score: 0, item: null };
   }
 
-  const normalizedQuestion = normalizeText(question);
-  const qTokens = tokenize(question);
+  const retrievalQuestion = extractContentDiscoveryTopic(question);
+  const normalizedQuestion = normalizeText(retrievalQuestion);
+  const qTokens = tokenize(retrievalQuestion);
   if (!qTokens.size) return { score: 0, item: null };
 
   // Keyword routing أولًا
-  const routed = keywordRoute(question, items);
+  const routed = keywordRoute(retrievalQuestion, items);
   if (routed) {
     console.log("🎯 Keyword route hit →", routed.item.url);
     return routed;
   }
 
   await ensureKnowledgeEmbeddings(items);
-  const qEmbedding = await embedText(question);
+  const qEmbedding = await embedText(retrievalQuestion);
 
   const genericQuestionTokens = new Set(
     [...qTokens].filter(
@@ -822,15 +823,15 @@ async function findBestMatch(question, items) {
     const titleScore =
       titleCommon / Math.max(Math.min(qTokens.size, titleTokens.size) || 1, 1);
 
-    const entityHits = countPhraseHits(question, entityPhrases);
-    const aliasHits = countPhraseHits(question, aliasPhrases);
-    const misspellingHits = countPhraseHits(question, misspellingPhrases);
-    const faqHits = countPhraseHits(question, faqPhrases);
-    const topicHits = countPhraseHits(question, topicPhrases);
-    const keywordHits = countPhraseHits(question, keywordPhrases);
-    const keywordExtendedHits = countPhraseHits(question, keywordExtendedPhrases);
+    const entityHits = countPhraseHits(retrievalQuestion, entityPhrases);
+    const aliasHits = countPhraseHits(retrievalQuestion, aliasPhrases);
+    const misspellingHits = countPhraseHits(retrievalQuestion, misspellingPhrases);
+    const faqHits = countPhraseHits(retrievalQuestion, faqPhrases);
+    const topicHits = countPhraseHits(retrievalQuestion, topicPhrases);
+    const keywordHits = countPhraseHits(retrievalQuestion, keywordPhrases);
+    const keywordExtendedHits = countPhraseHits(retrievalQuestion, keywordExtendedPhrases);
 
-    const exactTitleHit = phraseIncludes(question, titleValue) ? 1 : 0;
+    const exactTitleHit = phraseIncludes(retrievalQuestion, titleValue) ? 1 : 0;
     const titleContainsQuestion =
       normalizedQuestion && normalizeText(titleValue).includes(normalizedQuestion) ? 1 : 0;
 
