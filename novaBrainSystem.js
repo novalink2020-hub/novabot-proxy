@@ -388,6 +388,38 @@ function tokenize(str = "") {
       .filter((w) => w.length >= 3)
   );
 }
+
+function extractContentDiscoveryTopic(question = "") {
+  const original = `${question || ""}`.trim();
+  const normalized = normalizeText(original);
+  if (!normalized) return original;
+
+  const prefixes = [
+    "هل كتبت نوفا لينك عن",
+    "هل كتبت novalink عن",
+    "هل كتبت عن",
+    "هل لدى نوفا لينك مقال عن",
+    "هل لديكم مقال عن",
+    "هل عندكم مقال عن",
+    "هل لديكم تدوينة عن",
+    "هل عندكم تدوينة عن",
+    "هل تناولت نوفا لينك",
+    "هل تناولتم",
+    "هل نشرت نوفا لينك",
+    "هل نشرتم",
+    "هل تحدثت نوفا لينك عن",
+    "هل تحدثتم عن"
+  ];
+
+  for (const prefix of prefixes) {
+    if (normalized.startsWith(prefix)) {
+      const extracted = normalized.slice(prefix.length).trim();
+      if (extracted.length >= 4) return extracted;
+    }
+  }
+
+  return normalized;
+}
 function shouldUseEnglishPreface(text = "") {
   return /[a-zA-Z]/.test(text);
 }
