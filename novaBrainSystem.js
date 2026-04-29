@@ -230,10 +230,11 @@ if (GEMINI_API_KEY) {
 }
 
 // موديلات Gemini المسموح تجربتها
+// ملاحظة: لا نضع هنا إلا موديلات صالحة وتدعم generateContent.
+// gemini-2.0-pro و gemini-1.0-pro أُزيلت لأنها ترجع 404 في اللوج الحالي.
 const MODELS_TO_TRY = [
   "gemini-2.0-flash",
-  "gemini-2.0-pro",
-  "gemini-1.0-pro"
+  "gemini-2.5-flash-lite"
 ];
 
 // ============================================================
@@ -1424,12 +1425,35 @@ if (!/[.!؟…]$/.test(text)) {
       console.log("✅ Gemini success:", modelName);
       return text;
     } catch (err) {
-      console.log("⚠️ Gemini error on", modelName, "→", err.message);
+      const errorMessage = String(err?.message || err || "");
+      console.log("⚠️ Gemini error on", modelName, "→", errorMessage);
+
+      const isQuotaError =
+        errorMessage.includes("429") ||
+        errorMessage.includes("Too Many Requests") ||
+        errorMessage.includes("Resource exhausted") ||
+        errorMessage.includes("RESOURCE_EXHAUSTED");
+
+      const isModelNotFoundError =
+        errorMessage.includes("404") ||
+        errorMessage.includes("not found") ||
+        errorMessage.includes("not supported for generateContent");
+
+      if (isQuotaError) {
+        console.log("⛔ Gemini quota/rate limit reached. Stopping retries and using fallback.");
+        break;
+      }
+
+      if (isModelNotFoundError) {
+        console.log("⏭️ Gemini model unavailable. Trying next configured model if available.");
+        continue;
+      }
+
       continue;
     }
   }
 
-  console.log("⚠️ Gemini full fallback → Automated reply.");
+  console.log("⚠️ Gemini full fallback → Returning null to let NovaBot use knowledge/template fallback.");
   return null;
 }
 
